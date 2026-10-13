@@ -6,6 +6,7 @@
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
   const CHUNK = 2 * 1024 * 1024;      // 分片 2MB
+  const THUMB_MAX_BYTES = 100 * 1024; // 缩略图上限 100KB（超出则自动降质/缩边）
   const LS_TOKEN = 'cd.token', LS_USER = 'cd.user', LS_VIEW = 'cd.view';
 
   const state = {
@@ -1175,7 +1176,31 @@
     }
   }
 
-  /* 图片 → 480 宽 JPEG */
+  /* 把 canvas 编成 JPEG，必要时逐步降质 / 缩边，保证不超过 maxBytes */
+  function canvasToJpegBlob(canvas, quality) {
+    return new Promise((res, rej) =>
+      canvas.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/jpeg', quality));
+  }
+  async function encodeJpegUnder(canvas, maxBytes, startQ) {
+    let q = startQ || 0.8;
+    let blob = await canvasToJpegBlob(canvas, q);
+    while (blob.size > maxBytes && q > 0.4) {          // 先降质量（0.8 → 0.4）
+      q = Math.max(0.4, q - 0.1);
+      blob = await canvasToJpegBlob(canvas, q);
+    }
+    let scale = 1;
+    while (blob.size > maxBytes && scale > 0.34) {      // 还超 → 逐步缩边
+      scale -= 0.2;
+      const c2 = document.createElement('canvas');
+      c2.width = Math.max(1, Math.round(canvas.width * scale));
+      c2.height = Math.max(1, Math.round(canvas.height * scale));
+      c2.getContext('2d').drawImage(canvas, 0, 0, c2.width, c2.height);
+      blob = await canvasToJpegBlob(c2, 0.72);
+    }
+    return blob;
+  }
+
+  /* 图片 → 480 宽 JPEG（压到 ≤100KB） */
   function makeImageThumb(file, maxW) {
     return new Promise((res, rej) => {
       const url = URL.createObjectURL(file);
@@ -1187,7 +1212,9 @@
           const c = document.createElement('canvas');
           c.width = w; c.height = h;
           c.getContext('2d').drawImage(img, 0, 0, w, h);
-          c.toBlob((b) => { URL.revokeObjectURL(url); b ? res(b) : rej(new Error('toBlob')); }, 'image/jpeg', 0.8);
+          encodeJpegUnder(c, THUMB_MAX_BYTES, 0.8)
+            .then((b) => { URL.revokeObjectURL(url); b ? res(b) : rej(new Error('toBlob')); })
+            .catch((e) => { URL.revokeObjectURL(url); rej(e); });
         } catch (e) { URL.revokeObjectURL(url); rej(e); }
       };
       img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
@@ -1195,19 +1222,17 @@
     });
   }
 
-  /* 视频 → 首帧 JPEG */
+  /* 视频 → 首帧 JPEG（压到 ≤100KB） */
   async function makeVideoThumb(file) {
     const url = URL.createObjectURL(file);
     try {
-      const dataUrl = await captureVideoFrame(url);
-      const bin = atob(dataUrl.split(',')[1]);
-      const buf = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-      return new Blob([buf], { type: 'image/jpeg' });
+      const c = await captureVideoCanvas(url);
+      return await encodeJpegUnder(c, THUMB_MAX_BYTES, 0.72);
     } finally { URL.revokeObjectURL(url); }
   }
 
-  function captureVideoFrame(url, at) {
+  /* 视频首帧 → canvas */
+  function captureVideoCanvas(url, at) {
     return new Promise((res, rej) => {
       const v = document.createElement('video');
       v.preload = 'metadata'; v.muted = true; v.playsInline = true; v.src = url;
@@ -1220,11 +1245,16 @@
           c.width = w; c.height = h;
           c.getContext('2d').drawImage(v, 0, 0, w, h);
           clearTimeout(to);
-          res(c.toDataURL('image/jpeg', 0.72));
+          res(c);
         } catch (e) { clearTimeout(to); rej(e); }
       });
       v.addEventListener('error', () => { clearTimeout(to); rej(new Error('decode')); });
     });
+  }
+
+  /* 视频首帧 → dataURL（本地预览用） */
+  function captureVideoFrame(url, at) {
+    return captureVideoCanvas(url, at).then((c) => c.toDataURL('image/jpeg', 0.72));
   }
 
   function renderQueue(msg) {
