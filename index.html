@@ -20,16 +20,16 @@
     <form id="loginForm" autocomplete="on">
       <label class="field">
         <span id="userLabel">用户名</span>
-        <input id="loginUser" name="username" type="text" inputmode="text" autocomplete="username" placeholder="你的名字，支持中文" required>
+        <input id="loginUser" name="username" type="text" inputmode="text" autocomplete="username" required>
       </label>
       <label class="field">
         <span id="passLabel">密码</span>
-        <input id="loginPass" name="password" type="password" autocomplete="current-password" placeholder="你的登录密码" required>
+        <input id="loginPass" name="password" type="password" autocomplete="current-password" required>
       </label>
       <p class="field-hint" id="passHint" hidden>自己设一个（至少 4 位），别忘了；忘了找管理员重置</p>
       <label class="field reg-only" hidden>
         <span>班级口令</span>
-        <input id="regInvite" type="text" maxlength="32" placeholder="填班级口令">
+        <input id="regInvite" type="text" maxlength="32">
       </label>
       <p class="field-hint reg-only" id="inviteHint" hidden>口令为筱湘班军训口号第三句</p>
       <div id="loginErr" class="login-err" role="alert" hidden></div>
@@ -51,15 +51,15 @@
     <form id="pwForm" autocomplete="on">
       <label class="field">
         <span>初始密码</span>
-        <input id="pwOld" type="password" autocomplete="current-password" placeholder="名字首字母 + 123456" required>
+        <input id="pwOld" type="password" autocomplete="current-password" required>
       </label>
       <label class="field">
         <span>新密码</span>
-        <input id="pwNew" type="password" autocomplete="new-password" placeholder="自己设一个，至少 4 位" required>
+        <input id="pwNew" type="password" autocomplete="new-password" required>
       </label>
       <label class="field">
         <span>再输一次</span>
-        <input id="pwNew2" type="password" autocomplete="new-password" placeholder="和上面一致" required>
+        <input id="pwNew2" type="password" autocomplete="new-password" required>
       </label>
       <div id="pwErr" class="login-err" role="alert" hidden></div>
       <button class="btn btn-primary btn-block" type="submit" id="pwBtn">保存并进入</button>
@@ -113,9 +113,6 @@
       <div class="search">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm6.5-1.5L22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="searchInput" type="search" placeholder="搜索…" aria-label="搜索">
-        <button class="icon-btn" id="searchClear" hidden aria-label="清空">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>
         <span class="search-fields" id="searchFields" role="group" aria-label="搜索范围">
           <button type="button" class="sf" data-f="tag" title="按标签搜">标签</button>
           <button type="button" class="sf" data-f="name" title="按文件名搜">文件名</button>
@@ -124,6 +121,10 @@
       </div>
 
       <div class="top-actions">
+        <button class="btn" id="mkdirBtn" title="新建文件夹">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".22"/><path d="M4 9.5h16v6A3.5 3.5 0 0 1 16.5 19h-9A3.5 3.5 0 0 1 4 15.5v-6Z" fill="currentColor" opacity=".55"/><path d="M12 12.2v3.2M10.4 13.8h3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span class="only-desktop">新建文件夹</span>
+        </button>
         <button class="btn btn-primary" id="uploadBtn">
           <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="only-desktop">上传</span>
@@ -143,6 +144,10 @@
           <svg viewBox="0 0 24 24" width="17" height="17"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
         </button>
       </div>
+      <button class="btn" id="selBtn" title="选择">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M11 3C6.48 3 3 6.48 3 11s3.48 8 8 8 8-3.48 8-8-3.48-8-8-8zm0 2c1.1 0 2 .9 2 2v2h2v-2c0-1.1-.9-2-2-2h-2v-2h2c1.1 0 2 .9 2 2v2h2v-2c0-1.1-.9-2-2-2h-2v2zm6-4c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-4.9 5.05l1.48 1.48L15 11.69l-2.42 2.42z" fill="currentColor"/></svg>
+        <span class="only-desktop">选择</span>
+      </button>
       <label class="sort">
         <span class="only-desktop">排序</span>
         <select id="sortSel">

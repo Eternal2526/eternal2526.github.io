@@ -372,6 +372,43 @@ button,input,select{font:inherit;color:inherit}
 .drag-mask{position:fixed;inset:0;z-index:70;display:grid;place-items:center;pointer-events:none;
   background:var(--brand-ring);border:3px dashed var(--brand);color:var(--brand-ink);font-size:19px;font-weight:650}
 
+
+/* ---------- 选择模式 ---------- */
+.sel-check{
+  position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:8px;
+  display:grid;place-items:center;cursor:pointer;z-index:2;
+  background:rgba(255,255,255,.92);border:2px solid var(--line-strong);
+  color:var(--line-strong);transition:.16s background,.16s color,.16s border-color,.16s transform;
+  box-shadow:var(--sh-1);
+}
+.sel-check:hover{border-color:var(--brand);color:var(--brand);transform:scale(1.08)}
+.sel-check.is-on{background:var(--brand);border-color:var(--brand);color:#fff}
+.sel-check svg{opacity:0;transition:.16s}
+.sel-check.is-on svg{opacity:1}
+.row .sel-check{position:static;flex:none;width:24px;height:24px;border-radius:6px}
+.row .sel-check svg{width:16px;height:16px}
+
+.sel-bar{
+  position:sticky;bottom:10px;z-index:45;display:flex;align-items:center;gap:8px;
+  padding:10px 14px;margin-top:10px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);
+  box-shadow:var(--sh-2);animation:pop .2s ease;
+}
+.sel-bar .sel-count{font-size:13.5px;font-weight:600;color:var(--ink-2);margin-right:auto;white-space:nowrap}
+.sel-bar .sel-op{
+  height:34px;padding:0 14px;border-radius:var(--r-sm);font-size:13px;font-weight:600;
+  border:1px solid var(--line-strong);background:var(--panel);color:var(--ink-2);
+  cursor:pointer;white-space:nowrap;transition:.16s background,.16s color,.16s border-color;
+}
+.sel-bar .sel-op:hover{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink)}
+.sel-bar .sel-op[data-act="cancel"]:hover{background:rgba(217,56,56,.08);border-color:var(--danger);color:var(--danger)}
+
+@media (max-width:560px){
+  .sel-bar{flex-wrap:wrap;gap:6px;padding:8px 10px}
+  .sel-bar .sel-count{width:100%;margin-bottom:2px}
+  .sel-bar .sel-op{flex:1;padding:0 8px;font-size:12px}
+}
+
 /* ---------- 移动端 ---------- */
 .only-mobile{display:none}
 @media (max-width:860px){

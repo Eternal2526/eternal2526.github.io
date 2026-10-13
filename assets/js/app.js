@@ -20,14 +20,17 @@
     tags: [],               // 预设标签（服务端下发）
     groups: [],             // 标签分类（tag 文件夹，如「同学名字」）
     canEditTags: false,     // 只有管理员能改标签
-    tag: null,              // 当前按哪个标签筛选（null = 不筛）
+    tag: [],                // 已选标签 id（可多选，空 = 不筛）
     group: null,            // 当前按哪个分类筛选（null = 不筛）
     opened: JSON.parse(localStorage.getItem('cd.tgopen') || '{}'),  // 分类文件夹「展开」状态（默认收起）
     // 搜索范围（标签 / 文件名 / 上传者），默认三个都搜
     sfields: (() => {
       try { const o = JSON.parse(localStorage.getItem('cd.sfields') || ''); if (o && typeof o === 'object') return o; } catch (e) {}
       return { tag: true, name: true, uploader: true };
-    })()
+    })(),
+    // 文件多选状态
+    selected: new Set(),    // 已选文件路径集合
+    selMode: false,         // 是否处于选择模式
   };
   const SF_KEYS = ['tag', 'name', 'uploader'];
   const fieldsQ = () => {
@@ -94,6 +97,7 @@
     folderSm: '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".8"/></svg>',
     filter: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 5h16l-6.2 7.2V19l-3.6-2v-4.8L4 5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
     info: '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="8" r="1.1" fill="currentColor"/></svg>',
+    rename: '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 20h16M14 4.5l5.5 5.5L9 20.5H3.5V15z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
     move: '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7a3 3 0 0 1 3-3h3a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 10.6v4.2M10.2 13.4l1.8 1.8 1.8-1.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     empty: '<svg viewBox="0 0 24 24" width="54" height="54"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
   };
@@ -116,7 +120,6 @@
     $('#switchMode').textContent = regMode ? '← 返回登录' : '没有账号？用班级口令注册';
     $('#passLabel').textContent = regMode ? '设置密码' : '密码';
     $('#passHint').hidden = !regMode;
-    $('#loginPass').placeholder = regMode ? '自己设一个，至少 4 位' : '你的登录密码';
     $('#loginErr').hidden = true;
     (regMode ? $('#regInvite') : $('#loginUser')).focus();
   });
@@ -221,7 +224,7 @@
     if (!state.tags.length && !state.groups.length) {
       html += `<div class="tree-empty">${state.canEditTags ? '还没有标签，点「管理」加一个' : '管理员还没有设置标签'}</div>`;
     } else {
-      const tagItem = (t, nest) => `<button class="tree-item tg-item ${nest ? 'is-nest' : ''} ${String(state.tag) === String(t.id) ? 'is-on' : ''}" data-tag="${t.id}">
+      const tagItem = (t, nest) => `<button class="tree-item tg-item ${nest ? 'is-nest' : ''} ${(state.tag || []).includes(t.id) ? 'is-on' : ''}" data-tag="${t.id}">
           <span class="tg-dot" data-c="${esc(t.color)}"></span><span class="tg-name">${esc(t.name)}</span>
           <span class="ti-count">${t.count || 0}</span></button>`;
       // 分类 = 标签文件夹：默认收起，点文件夹展开/收起；右侧小按钮 = 只看这个分类的文件
@@ -293,34 +296,56 @@
   const chipHTML = (ts) => (ts || []).map((t) =>
     `<span class="tag" data-c="${esc(t.color)}">${esc(t.name)}</span>`).join('');
 
-  /* 点标签 = 筛该标签；点分类 = 筛这个「标签文件夹」下的全部文件 */
-  async function pickFilter(kind, id) {
-    state.tag = kind === 'tag' ? id : null;
-    state.group = kind === 'group' ? id : null;
-    smart = 'tag'; state.query = '';
-    $('#searchInput').value = ''; $('#searchClear').hidden = true;
+  /* 点标签 = 筛该标签（可多选，再点取消）；点分类 = 筛这个「标签文件夹」下的全部文件 */
+  async function applyTagFilter() {
+    const ids = (state.tag || []).slice();
+    const gid = state.group;
     let label = '标签';
-    if (kind === 'tag') {
-      const t = state.tags.find((x) => x.id === id);
-      label = '标签：' + (t ? t.name : '');
-    } else {
-      const g = state.groups.find((x) => x.id === id);
+    if (gid != null) {
+      const g = state.groups.find((x) => x.id === gid);
       label = '标签分类：' + (g ? g.name : '');
+    } else if (ids.length) {
+      const ts = state.tags.filter((t) => ids.includes(t.id));
+      label = '标签：' + ts.map((t) => t.name).join('、');
     }
+    state.query = '';
+    $('#searchInput').value = '';
     let items = [];
     try {
-      items = (await API.search('', 'all', state.tag, state.group)).items || [];
+      items = (await API.search('', 'all', ids, gid)).items || [];
     } catch (e) {                        // 兜底：退化成客户端过滤
       items = state.allItems.filter((i) => (i.tags || []).some((t) =>
-        kind === 'tag' ? t.id === id : t.group === id));
+        gid != null ? t.group === gid : ids.includes(t.id)));
     }
     state.items = items;
     $('#crumbs').innerHTML = `<button data-go="/">全部文件</button><span class="sep">/</span><span class="cur">${esc(label)}</span>`;
     $('#crumbs').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => load(b.dataset.go)));
     render(); loadTree(); closeDrawer();
   }
-  const reapplyFilter = () => (smart === 'tag' ? pickFilter(state.group != null ? 'group' : 'tag',
-    state.group != null ? state.group : state.tag) : Promise.resolve());
+
+  async function pickFilter(kind, id) {
+    if (kind === 'group') {
+      state.tag = [];
+      state.group = id;
+      smart = 'tag';
+      await applyTagFilter();
+      return;
+    }
+    // tag：多选切换（再点一次取消）
+    const arr = (state.tag || []).slice();
+    const i = arr.indexOf(id);
+    if (i >= 0) arr.splice(i, 1); else arr.push(id);
+    state.tag = arr;
+    state.group = null;
+    if (!arr.length) {                   // 全部取消 → 回正常浏览
+      smart = 'all';
+      await load(state.folder);
+      return;
+    }
+    smart = 'tag';
+    await applyTagFilter();
+  }
+  const reapplyFilter = () => (smart === 'tag' ? applyTagFilter() : Promise.resolve());
 
   function syncItemTags(it) {
     [state.items, state.allItems].forEach((arr) => arr.forEach((x) => { if (x.path === it.path) x.tags = it.tags; }));
@@ -506,7 +531,10 @@
         try {
           await API.tagDelete(id);
           await refreshTags(); syncAllTags();
-          if (state.tag === id) { state.tag = null; await load(state.folder); }
+          if ((state.tag || []).includes(id)) {
+            state.tag = state.tag.filter((x) => x !== id);
+            if (state.tag.length) await reapplyFilter(); else await load(state.folder);
+          }
           renderTagModal(); render(); loadTree();
           toast('标签已删除');
         } catch (e) { toast(e.message, 3600); }
@@ -561,8 +589,8 @@
   /* ---------------- 取数 ---------------- */
   async function load(path) {
     state.folder = path; state.query = '';
-    $('#searchInput').value = ''; $('#searchClear').hidden = true;
-    smart = 'all'; state.tag = null; state.group = null;
+    $('#searchInput').value = '';
+    smart = 'all'; state.tag = []; state.group = null;
     const r = await API.list(path);
     state.items = r.items;
     // 全量（用于左侧计数和智能视图）：根目录下的文件 + 各子目录里的文件
@@ -624,12 +652,20 @@
       const on = b.dataset.view === state.view;
       b.classList.toggle('is-on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    const tagName = smart === 'tag' ? (state.tags.find((t) => String(t.id) === String(state.tag))
-      || state.groups.find((g) => String(g.id) === String(state.group)) || {}) : null;
+    let tagLabel = '';
+    if (smart === 'tag') {
+      if (state.group != null) {
+        const g = state.groups.find((x) => String(x.id) === String(state.group));
+        tagLabel = (g && g.name) || '';
+      } else {
+        tagLabel = state.tags.filter((t) => (state.tag || []).includes(t.id)).map((t) => t.name).join('、');
+      }
+    }
+    const selCount = state.selMode && state.selected.size ? `· 选中 ${state.selected.size} 件` : '';
     $('#countText').textContent = state.query
-      ? `搜索「${state.query}」· ${all.length} 个结果`
-      : smart === 'tag' ? `${state.group != null ? '分类' : '标签'}「${tagName.name || ''}」· ${all.length} 个文件`
-      : `${dirs.length} 个文件夹 · ${filesL.length} 个文件`;
+      ? `搜索「${state.query}」· ${all.length} 个结果${selCount}`
+      : smart === 'tag' ? `${state.group != null ? '分类' : '标签'}「${tagLabel}」· ${all.length} 个文件${selCount}`
+      : `${dirs.length} 个文件夹 · ${filesL.length} 个文件${selCount}`;
 
     if (!all.length) {
       box.innerHTML = '';
@@ -653,6 +689,26 @@
       $('#empty').hidden = true;
       box.innerHTML = state.view === 'list' ? all.map(rowHTML).join('') : all.map(cardHTML).join('');
     }
+    // 选择模式下的浮动操作栏
+    if (state.selMode) {
+      const selCount = state.selected.size;
+      const bar = document.createElement('div');
+      bar.className = 'sel-bar';
+      bar.innerHTML = `<span class="sel-count">已选 ${selCount} 项</span>
+        <button class="btn btn-sm sel-op" data-act="tag">批量加标签</button>
+        <button class="btn btn-sm sel-op" data-act="move">移动到…</button>
+        <button class="btn btn-sm sel-op" data-act="cancel">取消</button>`;
+      document.querySelector('.main').appendChild(bar);
+      bar.addEventListener('click', (e) => {
+        const act = e.target.dataset.act;
+        if (act === 'tag') batchAddTag();
+        else if (act === 'move') openBatchMove();
+        else if (act === 'cancel') clearSelection();
+      });
+    } else {
+      const oldBar = document.querySelector('.sel-bar');
+      if (oldBar) oldBar.remove();
+    }
     bindItems();
   }
 
@@ -669,7 +725,13 @@
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
     const mine = it.uploader === state.user.name;
     const canDel = state.user.role === 'admin' || mine;
-    return `<article class="card" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
+    const isSelected = state.selMode && state.selected.has(it.path);
+    const selCheckbox = state.selMode
+      ? `<div class="sel-check${isSelected ? ' is-on' : ''}" data-path="${esc(it.path)}">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 11l3.5-5.5L22 8l-5 5-5 5l2.3 2.3L12 18l6-6z" fill="currentColor"/></svg>
+        </div>`
+      : '';
+    return `<article class="card${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <div class="thumb">${it.isDir ? `<div class="ph">${ICON.folder}<b>文件夹</b></div>` : thumb + badgeKind(it)}</div>
       <div class="meta">
         <div class="fname" title="${esc(it.name)}">${esc(it.name)}</div>
@@ -685,6 +747,7 @@
         <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
         ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
       </div>
+      ${selCheckbox}
     </article>`;
   }
 
@@ -694,7 +757,13 @@
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
     const mine = it.uploader === state.user.name;
     const canDel = state.user.role === 'admin' || mine;
-    return `<div class="row" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
+    const isSelected = state.selMode && state.selected.has(it.path);
+    const selCheckbox = state.selMode
+      ? `<span class="sel-check${isSelected ? ' is-on' : ''}" data-path="${esc(it.path)}">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 11l3.5-5.5L22 8l-5 5-5 5l2.3 2.3L12 18l6-6z" fill="currentColor"/></svg>
+        </span>`
+      : '';
+    return `<div class="row${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <span class="ricon">${ico}</span>
       <span class="rname" title="${esc(it.name)}">${esc(it.name)}</span>
       <span class="rmeta">
@@ -708,12 +777,22 @@
         <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
         ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
       </span>
+      ${selCheckbox}
     </div>`;
   }
 
   function bindItems() {
     $$('#files [data-path]').forEach((el) => {
       const it = state.items.concat(state.allItems).find((x) => x.path === el.dataset.path) || { path: el.dataset.path, name: el.dataset.path.split('/').pop(), isDir: el.dataset.dir === '1', kind: el.dataset.kind };
+      if (state.selMode) {
+        // 选择模式：点击卡片任何位置（包括缩略图）切换选中状态
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('[data-act]')) return;
+          e.stopPropagation();
+          toggleSelection(el.dataset.path);
+        });
+        return;
+      }
       el.addEventListener('click', (e) => {
         if (e.target.closest('[data-act]')) return;
         if (Date.now() - ctxAt < 800) return;        // 刚弹出长按菜单，这次点击不算数
@@ -756,6 +835,136 @@
     });
   }
 
+  // 切换文件选择状态（不重新渲染，只更新DOM）
+  function toggleSelection(path) {
+    const isAdding = !state.selected.has(path);
+    if (isAdding) {
+      // 权限检查：普通用户只能选自己传的文件
+      const file = state.items.find((i) => i.path === path) || state.allItems.find((i) => i.path === path);
+      if (file && file.uploader && file.uploader !== state.user.name && state.user.role !== 'admin') {
+        toast('只能选择自己上传的文件');
+        return;
+      }
+      state.selected.add(path);
+    } else {
+      state.selected.delete(path);
+    }
+    // 直接更新DOM，不重新渲染
+    const card = document.querySelector(`[data-path="${CSS.escape(path)}"]`);
+    if (card) {
+      card.classList.toggle('is-sel', isAdding);
+      const check = card.querySelector('.sel-check');
+      if (check) check.classList.toggle('is-on', isAdding);
+    }
+    // 更新计数
+    if (state.selected.size === 0) {
+      state.selMode = false;
+      $('#selBtn').classList.remove('is-on');
+      $('#selBtn').setAttribute('aria-selected', 'false');
+      const bar = document.querySelector('.sel-bar');
+      if (bar) bar.remove();
+    } else {
+      $('#selBtn').classList.add('is-on');
+      $('#selBtn').setAttribute('aria-selected', 'true');
+      const countEl = document.querySelector('.sel-count');
+      if (countEl) countEl.textContent = `已选 ${state.selected.size} 项`;
+    }
+  }
+
+  // 清除选择状态
+  function clearSelection() {
+    state.selected.clear();
+    state.selMode = false;
+    $('#selBtn').classList.remove('is-on');
+    $('#selBtn').setAttribute('aria-selected', 'false');
+    render();
+  }
+
+  // 批量加标签
+  async function batchAddTag() {
+    if (state.selected.size === 0) return;
+    // 获取选中的文件
+    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
+    // 显示标签选择浮层
+    const has = (id) => (selectedItems[0]?.tags || []).some((t) => t.id === id);
+    // 这里简化处理：使用现有的 openTagMenu，但针对多文件情况
+    // 实际应该显示一个批量标签浮层，但为了简化，我们使用 Promise.all 调用 /api/tag
+    // 先收集所有可用的标签
+    try {
+      const tagInfo = await API.tags();
+      const allTags = (tagInfo.tags || []).filter((t) => isTagKind(t.kind || 'image'));
+      // 简单实现：让用户从标签列表中选，然后对每个文件调用 tagSet
+      // 由于批量标签涉及 UI 复杂度，这里先实现一个基础版本：
+      // 1. 询问用户选择哪些标签
+      // 2. 对每个文件调用 /api/tag
+      
+      // 由于批量标签的UI较复杂（三态选择），这里提供一个提示
+      toast('批量加标签功能：选中文件后点右上角标签按钮，或使用批量接口 /api/tag-batch');
+      // 真正的批量实现需要在后端添加 /api/tag-batch 接口
+      // 这里演示 Promise.all 调用单文件接口的思路
+      /* 示例：
+      const tagIds = [2, 5]; // 用户选择的标签ID
+      await Promise.all(selectedItems.map(async (it) => {
+        await API.tagSet(it.path, tagIds, []);
+      }));
+      refreshTags();
+      render();
+      */
+    } catch (e) {
+      toast('获取标签列表失败: ' + e.message);
+    }
+  }
+
+  // 批量移动
+  async function batchMove() {
+    if (state.selected.size === 0) return;
+    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
+    // 使用已有的 moveModal 逻辑，但传入 paths 数组
+    const to = prompt('移动到目录路径，如 /照片');
+    if (!to) return;
+    try {
+      await API.move(state.selected.toArray ? state.selected.toArray() : [...state.selected], to);
+      toast('移动成功');
+      clearSelection();
+      load(state.folder);
+    } catch (e) {
+      toast('移动失败: ' + e.message);
+    }
+  }
+
+  // 打开批量移动模态框
+  function openBatchMove() {
+    if (state.selected.size === 0) return;
+    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
+    // 计算所有权
+    const allMine = selectedItems.every((i) => i.uploader === state.user.name || state.user.role === 'admin');
+    if (!allMine && state.user.role !== 'admin') {
+      toast('只能移动自己的文件');
+      return;
+    }
+    // 简单实现：提示目录路径
+    const to = prompt('移动到目录路径（如 /照片）：\n注意：文件夹不能移进自己');
+    if (to) {
+      try {
+        const paths = [...state.selected];
+        API.move(paths, to);
+        toast('移动请求已发送');
+        // 清除选择但不刷新，让用户确认
+      } catch (e) {
+        toast('移动失败: ' + e.message);
+      }
+    }
+  }
+
+  // 清除选择状态
+  function clearSelection() {
+    state.selected.clear();
+    state.selMode = false;
+    $('#selBtn').classList.remove('is-on');
+    $('#selBtn').setAttribute('aria-selected', 'false');
+    render();
+  }
+
   function go(path) {
     smart = 'all';
     const parts = path.split('/').filter(Boolean);
@@ -772,7 +981,7 @@
 
   function pickSmart(key) {
     if (key === 'all') { go('/'); loadTree(); return; }
-    smart = key; state.query = ''; state.tag = null; state.group = null;
+    smart = key; state.query = ''; state.tag = []; state.group = null;
     const s = SMART.find((x) => x.key === key);
     if (s.scope === 'mine') {
       state.items = state.allItems.filter((i) => i.uploader === state.user.name);
@@ -781,7 +990,7 @@
       state.items = state.allItems.filter((i) => s.kinds.includes(i.kind));
       $('#crumbs').innerHTML = `<span class="cur">${s.label}</span>`;
     }
-    $('#searchInput').value = ''; $('#searchClear').hidden = true;
+    $('#searchInput').value = '';
     render(); loadTree(); closeDrawer();
   }
 
@@ -795,7 +1004,6 @@
   let searchTimer;
   $('#searchInput').addEventListener('input', (e) => {
     const q = e.target.value.trim();
-    $('#searchClear').hidden = !q;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(async () => {
       state.query = q;
@@ -806,7 +1014,6 @@
       render();
     }, 260);
   });
-  $('#searchClear').addEventListener('click', () => { $('#searchInput').value = ''; $('#searchClear').hidden = true; state.query = ''; go(state.folder); });
 
   /* 搜索范围：标签 / 文件名 / 上传者（可多选，至少留一个） */
   function syncSearchFields() {
@@ -828,9 +1035,35 @@
   const ETA_WINDOW = [];
 
   $('#uploadBtn').addEventListener('click', () => $('#filePicker').click());
+  $('#mkdirBtn').addEventListener('click', async () => {
+    const nn = prompt('文件夹名字');
+    if (nn == null) return;
+    const name = nn.trim();
+    if (!name) { toast('名字不能为空'); return; }
+    if (/[\/\\\x00-\x1f]/.test(name)) { toast('名字不能带斜杠或换行'); return; }
+    const vp = state.folder === '/' ? '/' + name : state.folder.replace(/\/$/, '') + '/' + name;
+    try {
+      await API.mkdir(vp);
+      await load(state.folder);
+      toast('文件夹已创建');
+    } catch (e) { toast(e.message, 3600); }
+  });
   $('#filePicker').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
   $('#upMin').addEventListener('click', () => $('#uploader').hidden = true);
   $('#upRetry').addEventListener('click', () => queue.filter((q) => q.status === 'fail').forEach((q) => runTask(q)));
+
+  // 选择按钮：进入/退出选择模式
+  $('#selBtn').addEventListener('click', () => {
+    if (state.selMode) {
+      clearSelection();
+    } else {
+      state.selMode = true;
+      state.selected.clear();
+      $('#selBtn').classList.add('is-on');
+      $('#selBtn').setAttribute('aria-selected', 'true');
+      render();
+    }
+  });
 
   function uploadIdFor(file, path) {
     const s = [state.user.name, path, file.name, file.size, file.lastModified].join('|');
@@ -1055,6 +1288,26 @@
     } catch (e) { toast(e.message, 3600); }
   }
 
+  /* 重命名（入口只在「自己传的 / 管理员」的菜单里出现） */
+  async function renameItem(it) {
+    const nn = prompt('新名字：', it.name);
+    if (nn == null) return;
+    const name = nn.trim();
+    if (!name) { toast('名字不能为空'); return; }
+    if (name === it.name) return;
+    if (/[\/\\\x00-\x1f]/.test(name)) { toast('名字不能带斜杠或换行'); return; }
+    try {
+      const r = await API.rename(it.path, name);
+      const fix = (arr) => arr.forEach((x) => {
+        if (x.path === it.path) { x.name = name; x.path = r.to; }
+        else if (it.isDir && x.path.indexOf(it.path + '/') === 0) x.path = r.to + x.path.slice(it.path.length);
+      });
+      fix(state.items); fix(state.allItems);
+      render(); loadTree();
+      toast('已重命名');
+    } catch (e) { toast(e.message, 3600); }
+  }
+
   /* ---------------- 右键 / 长按菜单 ---------------- */
   let ctxEl = null, ctxAt = 0, ctxOff = null;
   function closeCtx() {
@@ -1070,7 +1323,8 @@
     m.className = 'ctxmenu';
     m.innerHTML = `<div class="cx-head" title="${esc(it.name)}">${esc(it.name)}</div>
       <button data-c="info">${ICON.info}<span>详细信息</span></button>
-      <button data-c="move">${ICON.move}<span>移动到…</span></button>
+      ${canDel ? `<button data-c="rename">${ICON.rename}<span>重命名</span></button>
+      <button data-c="move">${ICON.move}<span>移动到…</span></button>` : ''}
       ${API.canTag(it) ? `<button data-c="tag">${ICON.tag}<span>标签</span></button>` : ''}
       ${it.isDir ? '' : `<button data-c="dl">${ICON.dl}<span>下载</span></button>`}
       ${canDel ? `<button data-c="del" class="is-danger">${ICON.del}<span>删除</span></button>` : ''}`;
@@ -1088,6 +1342,7 @@
       const anchor = { getBoundingClientRect: () => r };
       closeCtx();
       if (k === 'info') openInfo(it);
+      else if (k === 'rename') renameItem(it);
       else if (k === 'move') openMove(it);
       else if (k === 'tag') openTagMenu(it, anchor);
       else if (k === 'dl') download(it);
@@ -1116,6 +1371,7 @@
       `<div class="info-row info-tags"><span>标签</span><div class="tags">${
         tags.length ? chipHTML(tags) : '<i class="info-none">还没加标签</i>'}</div></div>` +
       (API.canTag(it) ? `<div class="info-actions"><button class="btn btn-ghost btn-sm" id="infoTagBtn">${ICON.tag} 加标签</button></div>` : '');
+    $('#infoMove').hidden = !(state.user.role === 'admin' || it.uploader === state.user.name);
     $('#infoModal').hidden = false;
     const tb = $('#infoTagBtn');
     if (tb) tb.addEventListener('click', () => openTagMenu(state.infoItem, tb));
@@ -1267,10 +1523,6 @@
 
   /* ---------------- 启动 ---------------- */
   (async function boot() {
-    if (API.MOCK) {
-      $('#loginPass').placeholder = '演示模式密码：2526';
-      $('#loginUser').placeholder = '试试：林小满 / 陈小雨 / 王浩';
-    }
     const tk = localStorage.getItem(LS_TOKEN);
     const u = localStorage.getItem(LS_USER);
     if (tk && u) {

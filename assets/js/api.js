@@ -16,6 +16,7 @@
    GET  /api/search?...&fields=name,uploader,tag        ← 搜索范围（默认三个都搜）
    POST /api/mkdir          {path}
    POST /api/move           {paths:[...], to:"/目标目录"}  ← 移动（只能动自己传的，管理员不限）
+   POST /api/rename         {path, name}                   ← 重命名（只能改自己传的，管理员不限）
    POST /api/delete         {paths:["/a.jpg"]}        ← 服务端必须校验"只能删自己传的"
    POST /api/upload         ?uploadId=&path=&chunk=&chunks=  (body=该分片原始字节)
                             → {done:false} | {done:true,item:Item}
@@ -231,6 +232,17 @@
       }
       return { ok: true, moved };
     },
+    async rename(path, name) {
+      await sleep(180);
+      const it = files.find((f) => f.path === path);
+      if (!it) throw new Error('文件不存在');
+      const np = path.replace(/\/[^/]*$/, '') + '/' + name;
+      if (files.some((f) => f.path === np)) throw new Error('已经有同名的了');
+      const old = it.path;
+      it.name = name; it.path = np;
+      files.filter((f) => f.path.indexOf(old + '/') === 0).forEach((f) => { f.path = np + f.path.slice(old.length); });
+      return { ok: true, from: old, to: np, item: it };
+    },
     async tags() {
       await sleep(90);
       const tags = MOCK_TAGS.map((t) => ({
@@ -424,6 +436,10 @@
       return req('/api/move', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths, to }) });
     },
+    async rename(path, name) {
+      return req('/api/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, name }) });
+    },
     async tags() { return req('/api/tags'); },
     async tagSet(path, add, remove) {
       return req('/api/tag', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -485,6 +501,7 @@
     list: (p, t, g) => (API.MOCK ? mock : real).list(p, t, g),
     search: (q, s, t, g, f) => (API.MOCK ? mock : real).search(q, s, t, g, f),
     move: (ps, to) => (API.MOCK ? mock : real).move(ps, to),
+    rename: (p, n) => (API.MOCK ? mock : real).rename(p, n),
     tags: () => (API.MOCK ? mock : real).tags(),
     tagSet: (p, add, rm) => (API.MOCK ? mock : real).tagSet(p, add, rm),
     tagCreate: (n, c, g) => (API.MOCK ? mock : real).tagCreate(n, c, g),
