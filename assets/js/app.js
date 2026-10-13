@@ -22,7 +22,17 @@
     canEditTags: false,     // 只有管理员能改标签
     tag: null,              // 当前按哪个标签筛选（null = 不筛）
     group: null,            // 当前按哪个分类筛选（null = 不筛）
-    opened: JSON.parse(localStorage.getItem('cd.tgopen') || '{}')   // 分类文件夹「展开」状态（默认收起）
+    opened: JSON.parse(localStorage.getItem('cd.tgopen') || '{}'),  // 分类文件夹「展开」状态（默认收起）
+    // 搜索范围（标签 / 文件名 / 上传者），默认三个都搜
+    sfields: (() => {
+      try { const o = JSON.parse(localStorage.getItem('cd.sfields') || ''); if (o && typeof o === 'object') return o; } catch (e) {}
+      return { tag: true, name: true, uploader: true };
+    })()
+  };
+  const SF_KEYS = ['tag', 'name', 'uploader'];
+  const fieldsQ = () => {
+    const on = SF_KEYS.filter((k) => state.sfields[k]);
+    return on.length === SF_KEYS.length ? '' : '&fields=' + (on.length ? on.join(',') : 'none');
   };
 
   /* ---------------- 工具 ---------------- */
@@ -83,6 +93,8 @@
     tag: '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M11.6 4H20v8.4l-8.3 8.3a1.6 1.6 0 0 1-2.3 0l-6.1-6.1a1.6 1.6 0 0 1 0-2.3L11.6 4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16.2" cy="7.8" r="1.5" fill="currentColor"/></svg>',
     folderSm: '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".8"/></svg>',
     filter: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 5h16l-6.2 7.2V19l-3.6-2v-4.8L4 5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+    info: '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="8" r="1.1" fill="currentColor"/></svg>',
+    move: '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7a3 3 0 0 1 3-3h3a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 10.6v4.2M10.2 13.4l1.8 1.8 1.8-1.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     empty: '<svg viewBox="0 0 24 24" width="54" height="54"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
   };
 
@@ -331,6 +343,7 @@
     const tmItem = (t) => `<button class="tm-item ${has(t.id) ? 'is-on' : ''}" data-tid="${t.id}">
         <span class="tg-dot" data-c="${esc(t.color)}"></span><span class="tm-name">${esc(t.name)}</span>
         <span class="tm-tick">✓</span></button>`;
+    const OPEN = state.tgOpen || (state.tgOpen = JSON.parse(localStorage.getItem('cd.tgopen2') || '{}'));
     const bodyHTML = (kw) => {
       const k = (kw || '').trim().toLowerCase();
       const hit = (t) => !k || t.name.toLowerCase().includes(k);
@@ -339,7 +352,10 @@
         for (const g of sortGroups(state.groups)) {
           const inG = sortTags(state.tags.filter((t) => t.group === g.id && hit(t)));
           if (!inG.length) continue;
-          out += `<div class="tm-sep">${esc(g.name)}</div>` + inG.map(tmItem).join('');
+          const open = !!k || !!OPEN[g.id];          // 已分类的默认折叠；搜标签时自动展开
+          out += `<button type="button" class="tm-sep tm-fold" data-g="${g.id}">
+            <span class="tm-ar">${open ? '▾' : '▸'}</span><span class="tm-gn">${esc(g.name)}</span>
+            <span class="tm-n">${inG.length}</span></button>` + (open ? inG.map(tmItem).join('') : '');
         }
         const loose = sortTags(state.tags.filter((t) => t.group == null && hit(t)));
         if (loose.length) out += `<div class="tm-sep">未分类</div>` + loose.map(tmItem).join('');
@@ -369,6 +385,15 @@
       inp.focus();
     }
     m.querySelector('#tmBody').addEventListener('click', async (e) => {
+      const fb = e.target.closest('[data-g]');
+      if (fb) {                                   // 展开 / 收起这个分类
+        e.stopPropagation();
+        const gid = fb.dataset.g;
+        OPEN[gid] = !OPEN[gid];
+        localStorage.setItem('cd.tgopen2', JSON.stringify(OPEN));
+        m.querySelector('#tmBody').innerHTML = bodyHTML(inp ? inp.value : '');
+        return;
+      }
       const b = e.target.closest('[data-tid]');
       if (!b) return;
       e.stopPropagation();
@@ -643,6 +668,7 @@
       ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async">`
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
     const mine = it.uploader === state.user.name;
+    const canDel = state.user.role === 'admin' || mine;
     return `<article class="card" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <div class="thumb">${it.isDir ? `<div class="ph">${ICON.folder}<b>文件夹</b></div>` : thumb + badgeKind(it)}</div>
       <div class="meta">
@@ -652,12 +678,12 @@
           <span>·</span><span>${fmtDate(it.mtime)}</span>
           ${it.uploader ? `<span class="who">${esc(it.uploader)}</span>` : ''}
         </div>
-        ${tagsHTML(it, 2)}
       </div>
       <div class="acts">
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
         ${it.isDir ? '' : `<button class="icon-btn" data-act="dl" title="下载">${ICON.dl}</button>`}
-        ${(!it.isDir && mine) ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
+        <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
+        ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
       </div>
     </article>`;
   }
@@ -667,10 +693,10 @@
     const isImg = it.kind === 'image' || it.kind === 'video';
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
     const mine = it.uploader === state.user.name;
+    const canDel = state.user.role === 'admin' || mine;
     return `<div class="row" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <span class="ricon">${ico}</span>
       <span class="rname" title="${esc(it.name)}">${esc(it.name)}</span>
-      ${tagsHTML(it, 2)}
       <span class="rmeta">
         ${it.uploader ? `<span class="who">${esc(it.uploader)}</span>` : ''}
         ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
@@ -679,7 +705,8 @@
       <span class="racts">
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
         ${it.isDir ? '' : `<button class="icon-btn" data-act="dl" title="下载">${ICON.dl}</button>`}
-        ${(!it.isDir && mine) ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
+        <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
+        ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
       </span>
     </div>`;
   }
@@ -689,6 +716,7 @@
       const it = state.items.concat(state.allItems).find((x) => x.path === el.dataset.path) || { path: el.dataset.path, name: el.dataset.path.split('/').pop(), isDir: el.dataset.dir === '1', kind: el.dataset.kind };
       el.addEventListener('click', (e) => {
         if (e.target.closest('[data-act]')) return;
+        if (Date.now() - ctxAt < 800) return;        // 刚弹出长按菜单，这次点击不算数
         it.isDir ? go(it.path) : openViewer(it);
       });
       const dl = el.querySelector('[data-act="dl"]');
@@ -697,6 +725,34 @@
       if (del) del.addEventListener('click', () => removeItem(it));
       const tg = el.querySelector('[data-act="tag"]');
       if (tg) tg.addEventListener('click', (e) => { e.stopPropagation(); openTagMenu(it, tg); });
+      const more = el.querySelector('[data-act="more"]');
+      if (more) more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const r = more.getBoundingClientRect();
+        openCtx(it, r.left - 130, r.bottom + 6);
+      });
+
+      /* 右键（桌面）/ 长按（手机）→ 菜单 */
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openCtx(it, e.clientX, e.clientY); });
+      let lpTimer = null, lpFrom = null;
+      el.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        lpFrom = { x: t.clientX, y: t.clientY };
+        clearTimeout(lpTimer);
+        lpTimer = setTimeout(() => {
+          lpTimer = null;
+          try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+          openCtx(it, lpFrom.x, lpFrom.y);
+        }, 500);
+      }, { passive: true });
+      el.addEventListener('touchmove', (e) => {
+        if (!lpFrom || !e.touches.length) return;
+        const t = e.touches[0];
+        if (Math.abs(t.clientX - lpFrom.x) > 10 || Math.abs(t.clientY - lpFrom.y) > 10) { clearTimeout(lpTimer); lpTimer = null; }
+      }, { passive: true });
+      el.addEventListener('touchend', () => { clearTimeout(lpTimer); lpTimer = null; });
+      el.addEventListener('touchcancel', () => { clearTimeout(lpTimer); lpTimer = null; });
     });
   }
 
@@ -744,13 +800,28 @@
     searchTimer = setTimeout(async () => {
       state.query = q;
       if (!q) { go(state.folder); return; }
-      const r = await API.search(q, state.scope);
+      const r = await API.search(q, state.scope, null, null, fieldsQ());
       state.items = r.items;
       $('#crumbs').innerHTML = `<span class="cur">搜索：${esc(q)}</span>`;
       render();
     }, 260);
   });
   $('#searchClear').addEventListener('click', () => { $('#searchInput').value = ''; $('#searchClear').hidden = true; state.query = ''; go(state.folder); });
+
+  /* 搜索范围：标签 / 文件名 / 上传者（可多选，至少留一个） */
+  function syncSearchFields() {
+    $$('#searchFields .sf').forEach((b) => b.classList.toggle('is-on', !!state.sfields[b.dataset.f]));
+  }
+  syncSearchFields();
+  $$('#searchFields .sf').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.f;
+    const on = SF_KEYS.filter((x) => state.sfields[x]);
+    if (state.sfields[k] && on.length === 1) { toast('至少留一个搜索范围'); return; }
+    state.sfields[k] = !state.sfields[k];
+    localStorage.setItem('cd.sfields', JSON.stringify(state.sfields));
+    syncSearchFields();
+    if (state.query) $('#searchInput').dispatchEvent(new Event('input'));   // 已有搜索词就立刻重搜
+  }));
 
   /* ---------------- 上传（分片 + 断点续传） ---------------- */
   const queue = [];       // {id,file,path,uploadId,chunks,done,status,sent,speed,retry}
@@ -972,19 +1043,157 @@
   }
 
   async function removeItem(it) {
-    if (!confirm(`确定删除「${it.name}」？`)) return;
+    const tip = it.isDir ? `确定删除文件夹「${it.name}」？\n里面的东西会一起删掉。` : `确定删除「${it.name}」？`;
+    if (!confirm(tip)) return;
     try {
       await API.remove([it.path]);
-      state.items = state.items.filter((x) => x.path !== it.path);
-      state.allItems = state.allItems.filter((x) => x.path !== it.path);
+      const gone = (x) => x.path === it.path || x.path.indexOf(it.path.replace(/\/$/, '') + '/') === 0;
+      state.items = state.items.filter((x) => !gone(x));
+      state.allItems = state.allItems.filter((x) => !gone(x));
       render(); renderQuota(); loadTree();
       toast('已删除');
     } catch (e) { toast(e.message, 3600); }
   }
 
-  async function openViewer(it) {
+  /* ---------------- 右键 / 长按菜单 ---------------- */
+  let ctxEl = null, ctxAt = 0, ctxOff = null;
+  function closeCtx() {
+    if (ctxOff) { document.removeEventListener('click', ctxOff); ctxOff = null; }
+    if (ctxEl) { ctxEl.remove(); ctxEl = null; }
+  }
+  function openCtx(it, x, y) {
+    closeCtx(); closeTagMenu();
+    ctxAt = Date.now();
+    const mine = it.uploader === state.user.name;
+    const canDel = state.user.role === 'admin' || mine;
+    const m = document.createElement('div');
+    m.className = 'ctxmenu';
+    m.innerHTML = `<div class="cx-head" title="${esc(it.name)}">${esc(it.name)}</div>
+      <button data-c="info">${ICON.info}<span>详细信息</span></button>
+      <button data-c="move">${ICON.move}<span>移动到…</span></button>
+      ${API.canTag(it) ? `<button data-c="tag">${ICON.tag}<span>标签</span></button>` : ''}
+      ${it.isDir ? '' : `<button data-c="dl">${ICON.dl}<span>下载</span></button>`}
+      ${canDel ? `<button data-c="del" class="is-danger">${ICON.del}<span>删除</span></button>` : ''}`;
+    document.body.appendChild(m);
+    const w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - w - 8)) + 'px';
+    m.style.top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - h - 8)) + 'px';
+    ctxEl = m;
+    m.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-c]');
+      if (!b) return;
+      e.stopPropagation();
+      const k = b.dataset.c;
+      const r = b.getBoundingClientRect();
+      const anchor = { getBoundingClientRect: () => r };
+      closeCtx();
+      if (k === 'info') openInfo(it);
+      else if (k === 'move') openMove(it);
+      else if (k === 'tag') openTagMenu(it, anchor);
+      else if (k === 'dl') download(it);
+      else if (k === 'del') removeItem(it);
+    });
+    ctxOff = (ev) => { if (ctxEl && !ctxEl.contains(ev.target)) closeCtx(); };
+    setTimeout(() => document.addEventListener('click', ctxOff), 0);
+  }
+
+  /* ---------------- 详细信息 ---------------- */
+  const KIND_CN = { dir: '文件夹', image: '图片', video: '视频', audio: '音频', pdf: 'PDF', doc: '文档',
+    sheet: '表格', slide: '演示文稿', code: '代码', text: '文本', archive: '压缩包', other: '文件' };
+  function openInfo(it) {
+    state.infoItem = it;
+    const tags = it.tags || [];
+    const rows = [
+      ['名称', it.name],
+      ['类型', it.isDir ? '文件夹' : (KIND_CN[it.kind] || '文件')],
+      ['大小', it.isDir ? (it.size || 0) + ' 项' : fmtSize(it.size)],
+      ['修改时间', fmtDate(it.mtime)],
+      ['上传者', it.uploader || '—'],
+      ['位置', it.path]
+    ];
+    $('#infoBody').innerHTML = rows.map(([k, v]) =>
+      `<div class="info-row"><span>${k}</span><b>${esc(String(v))}</b></div>`).join('') +
+      `<div class="info-row info-tags"><span>标签</span><div class="tags">${
+        tags.length ? chipHTML(tags) : '<i class="info-none">还没加标签</i>'}</div></div>` +
+      (API.canTag(it) ? `<div class="info-actions"><button class="btn btn-ghost btn-sm" id="infoTagBtn">${ICON.tag} 加标签</button></div>` : '');
+    $('#infoModal').hidden = false;
+    const tb = $('#infoTagBtn');
+    if (tb) tb.addEventListener('click', () => openTagMenu(state.infoItem, tb));
+  }
+  $('#infoClose').addEventListener('click', () => { $('#infoModal').hidden = true; });
+  $('#infoDone').addEventListener('click', () => { $('#infoModal').hidden = true; });
+  $('#infoModal').addEventListener('click', (e) => { if (e.target === $('#infoModal')) $('#infoModal').hidden = true; });
+  $('#infoMove').addEventListener('click', () => { $('#infoModal').hidden = true; if (state.infoItem) openMove(state.infoItem); });
+
+  /* ---------------- 移动 ---------------- */
+  let moveTarget = null, movePick = null;
+  async function openMove(it) {
+    moveTarget = it; movePick = null;
+    $('#moveSub').textContent = `把「${it.name}」移到哪个文件夹：`;
+    $('#moveTree').innerHTML = '<div class="mv-load">正在读取目录…</div>';
+    $('#moveOk').disabled = true;
+    $('#moveModal').hidden = false;
+    const dirs = [{ path: '/', name: '全部文件', depth: 0 }];
+    async function walk(p, depth) {
+      if (depth > 3 || dirs.length >= 150) return;
+      let r;
+      try { r = await API.list(p); } catch (e) { return; }
+      for (const d of r.items.filter((x) => x.isDir)) {
+        if (it.isDir && (d.path === it.path || d.path.indexOf(it.path + '/') === 0)) continue;  // 不能移进自己
+        dirs.push({ path: d.path, name: d.name, depth });
+        await walk(d.path, depth + 1);
+      }
+    }
+    await walk('/', 1);
+    const cur = state.folder.replace(/\/$/, '') || '/';
+    $('#moveTree').innerHTML = dirs.map((d) => {
+      const here = d.path === cur;
+      return `<button class="mv-item${here ? ' is-cur' : ''}" data-p="${esc(d.path)}"${here ? ' disabled' : ''}
+        style="padding-left:${10 + d.depth * 15}px">${ICON.folderSm}<span>${esc(d.name)}</span>${here ? '<i class="mv-hint">当前位置</i>' : ''}</button>`;
+    }).join('');
+    $('#moveTree').querySelectorAll('.mv-item').forEach((b) => b.addEventListener('click', () => {
+      if (b.disabled) return;
+      movePick = b.dataset.p;
+      $$('#moveTree .mv-item').forEach((x) => x.classList.toggle('is-on', x === b));
+      $('#moveOk').disabled = false;
+    }));
+  }
+  $('#moveClose').addEventListener('click', () => { $('#moveModal').hidden = true; });
+  $('#moveCancel').addEventListener('click', () => { $('#moveModal').hidden = true; });
+  $('#moveModal').addEventListener('click', (e) => { if (e.target === $('#moveModal')) $('#moveModal').hidden = true; });
+  $('#moveOk').addEventListener('click', async () => {
+    if (!moveTarget || !movePick) return;
+    const btn = $('#moveOk');
+    btn.disabled = true; btn.textContent = '移动中…';
+    try {
+      const r = await API.move([moveTarget.path], movePick);
+      $('#moveModal').hidden = true;
+      if (r && r.error) toast(r.error, 4200);
+      else toast('已移到「' + (movePick === '/' ? '全部文件' : movePick.split('/').pop()) + '」');
+      await load(state.folder);
+    } catch (e) { toast(e.message, 4200); }
+    finally { btn.disabled = false; btn.textContent = '移到这个文件夹'; }
+  });
+
+  /* 预览：同一目录里的图片/视频连成一个相册，可左右切换 */
+  let viewerList = [], viewerIdx = -1;
+  function viewerStep(step) {
+    if (viewerList.length < 2) return;
+    viewerIdx = (viewerIdx + step + viewerList.length) % viewerList.length;
+    openViewer(viewerList[viewerIdx], true);
+  }
+
+  async function openViewer(it, keep) {
     const v = $('#viewer'), body = $('#viewerBody');
+    if (!keep) {
+      const src = (state.items && state.items.length) ? state.items : state.allItems;
+      const media = sortItems(src.filter((x) => !x.isDir && (x.kind === 'image' || x.kind === 'video')));
+      const i = media.findIndex((x) => x.path === it.path);
+      if (i >= 0) { viewerList = media; viewerIdx = i; } else { viewerList = [it]; viewerIdx = 0; }
+    }
     $('#viewerName').textContent = it.name;
+    $('#viewerPos').textContent = viewerList.length > 1 ? (viewerIdx + 1) + ' / ' + viewerList.length : '';
+    $('#viewerPrev').hidden = $('#viewerNext').hidden = viewerList.length < 2;
     $('#viewerTags').innerHTML = chipHTML(it.tags);
     const vt = $('#viewerTag');
     vt.hidden = !API.canTag(it);
@@ -1012,10 +1221,37 @@
     v.hidden = false;
   }
   $('#viewerClose').addEventListener('click', () => { $('#viewer').hidden = true; $('#viewerBody').innerHTML = ''; closeTagMenu(); });
+  $('#viewerPrev').addEventListener('click', () => viewerStep(-1));
+  $('#viewerNext').addEventListener('click', () => viewerStep(1));
+
+  /* 手机：在预览里左右滑动 = 上一张 / 下一张（像相册那样） */
+  (function viewerSwipe() {
+    const v = $('#viewer');
+    let sx = 0, sy = 0, on = false;
+    v.addEventListener('touchstart', (e) => {
+      if (v.hidden || e.touches.length !== 1) return;
+      if (e.target.closest('video, audio')) return;      // 播放器上的手势不抢
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; on = true;
+    }, { passive: true });
+    v.addEventListener('touchend', (e) => {
+      if (!on) return;
+      on = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      viewerStep(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
+
   document.addEventListener('keydown', (e) => {
+    if (!$('#viewer').hidden && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      viewerStep(e.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
     if (e.key === 'Escape') {
       $('#viewer').hidden = true; $('#viewerBody').innerHTML = '';
-      closeDrawer(); closeTagMenu(); closeTagModal();
+      closeDrawer(); closeTagMenu(); closeTagModal(); closeCtx();
+      $('#infoModal').hidden = true; $('#moveModal').hidden = true;
     }
   });
 

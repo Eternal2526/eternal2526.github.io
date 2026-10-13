@@ -259,7 +259,7 @@ button,input,select{font:inherit;color:inherit}
 .row .tags,.row .rtags{display:flex;gap:4px;flex:none}
 
 /* 标签浮层 */
-.tagmenu{position:fixed;z-index:90;width:250px;background:var(--panel);border:1px solid var(--line);
+.tagmenu{position:fixed;z-index:96;width:250px;background:var(--panel);border:1px solid var(--line);
   border-radius:var(--r-md);box-shadow:var(--sh-2);padding:6px;animation:pop .14s ease;overflow:hidden}
 .tagmenu .tm-head{padding:6px 8px 8px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line);
   margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -388,4 +388,65 @@ button,input,select{font:inherit;color:inherit}
   .toolbar{flex-wrap:wrap;gap:8px}
   .row .rmeta .rdate{display:none}
   .row .tags{display:none}
+}
+
+/* ---------- 搜索范围按钮（标签 / 文件名 / 上传者） ---------- */
+.search-fields{display:flex;align-items:center;gap:4px;flex:none}
+.search-fields .sf{height:27px;padding:0 9px;border:1px solid var(--line-strong);border-radius:99px;
+  background:var(--panel-2);color:var(--ink-3);font-size:12px;cursor:pointer;white-space:nowrap;
+  transition:.16s background,.16s color,.16s border-color}
+.search-fields .sf:hover{color:var(--ink);border-color:var(--ink-3)}
+.search-fields .sf.is-on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+
+/* ---------- 右键 / 长按菜单 ---------- */
+.ctxmenu{position:fixed;z-index:97;width:188px;padding:5px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-2);animation:pop .12s ease}
+.ctxmenu .cx-head{padding:6px 9px 7px;font-size:11.5px;color:var(--ink-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid var(--line);margin-bottom:4px}
+.ctxmenu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 9px;border:0;border-radius:var(--r-sm);
+  background:transparent;color:var(--ink);font-size:13.5px;text-align:left;cursor:pointer}
+.ctxmenu button:hover{background:var(--panel-2)}
+.ctxmenu button.is-danger{color:var(--danger)}
+.ctxmenu button.is-danger:hover{background:rgba(217,56,56,.10)}
+.ctxmenu button svg{flex:none;opacity:.8}
+
+/* ---------- 详细信息 / 移动 ---------- */
+.modal-sm{max-width:432px}
+.modal-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.info-body{margin-top:4px}
+.info-row{display:flex;align-items:flex-start;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.info-row:last-child{border-bottom:0}
+.info-row>span{flex:none;width:62px;color:var(--ink-3);font-size:12.5px;padding-top:1px}
+.info-row>b{flex:1;min-width:0;font-weight:500;word-break:break-all}
+.info-row .tags{margin-top:0}
+.info-none{font-style:normal;font-size:12.5px;color:var(--ink-3)}
+.info-actions{margin-top:10px}
+.info-actions .btn{display:inline-flex;align-items:center;gap:6px}
+.move-tree{max-height:min(52vh,380px);overflow:auto;margin-top:4px;padding:5px;
+  border:1px solid var(--line);border-radius:var(--r-md)}
+.mv-item{display:flex;align-items:center;gap:7px;width:100%;padding:8px 10px;border:0;border-radius:var(--r-sm);
+  background:transparent;color:var(--ink);font-size:13.5px;text-align:left;cursor:pointer}
+.mv-item:hover:not(:disabled){background:var(--panel-2)}
+.mv-item.is-on{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.mv-item:disabled{opacity:.55;cursor:default}
+.mv-item svg{flex:none;opacity:.75}
+.mv-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-hint{font-style:normal;font-size:11px;color:var(--ink-3)}
+.mv-load{padding:14px;text-align:center;color:var(--ink-3);font-size:13px}
+
+/* ---------- 标签浮层：分类可折叠（默认收起） ---------- */
+.tagmenu .tm-fold{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;
+  font:inherit;text-align:left;cursor:pointer;color:var(--ink-3)}
+.tagmenu .tm-fold:hover{color:var(--ink);background:var(--panel-2)}
+.tagmenu .tm-ar{width:12px;flex:none;font-size:10px}
+.tagmenu .tm-gn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tagmenu .tm-n{flex:none;font-size:11px}
+
+/* ---------- 预览：相册式左右切换 ---------- */
+.viewer{touch-action:pan-y}
+.viewer-head .v-pos{flex:none;margin-left:9px;font-size:12px;color:rgba(255,255,255,.62)}
+
+@media (max-width:560px){
+  .search-fields .sf{padding:0 7px;font-size:11.5px}
+  .viewer-head .v-pos{margin-left:6px}
 }

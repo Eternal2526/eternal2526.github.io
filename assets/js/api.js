@@ -13,7 +13,9 @@
    (mustChange=true 时，除以上三个接口外一律 403「请先修改初始密码」)
    GET  /api/list?path=/学习资料                       → {path, items:[Item]}
    GET  /api/search?q=关键词&scope=all|mine            → {items:[Item]}
+   GET  /api/search?...&fields=name,uploader,tag        ← 搜索范围（默认三个都搜）
    POST /api/mkdir          {path}
+   POST /api/move           {paths:[...], to:"/目标目录"}  ← 移动（只能动自己传的，管理员不限）
    POST /api/delete         {paths:["/a.jpg"]}        ← 服务端必须校验"只能删自己传的"
    POST /api/upload         ?uploadId=&path=&chunk=&chunks=  (body=该分片原始字节)
                             → {done:false} | {done:true,item:Item}
@@ -197,16 +199,37 @@
       }
       return { path: norm, items };
     },
-    async search(q, scope, tag, group) {
+    async search(q, scope, tag, group, fields) {
       await sleep(180);
       const k = (q || '').trim().toLowerCase();
+      const fset = fields ? new Set(fields.split(',')) : new Set(['name', 'uploader', 'tag']);
       let r = files.filter((f) => !f.isDir).map(withTags);
       if (scope === 'mine') r = r.filter((f) => f.uploader === mockUser?.name);
       if (tag != null) r = r.filter((f) => (f.tags || []).some((t) => t.id === Number(tag)));
       if (group != null) r = r.filter((f) => (f.tags || []).some((t) => t.group === Number(group)));
-      if (k) r = r.filter((f) => f.name.toLowerCase().includes(k) || (f.uploader || '').toLowerCase().includes(k)
-        || (f.tags || []).some((t) => t.name.toLowerCase().includes(k)));
+      if (k) r = r.filter((f) => (fset.has('name') && f.name.toLowerCase().includes(k))
+        || (fset.has('uploader') && (f.uploader || '').toLowerCase().includes(k))
+        || (fset.has('tag') && (f.tags || []).some((t) => t.name.toLowerCase().includes(k))));
       return { items: r.slice(0, 200) };
+    },
+    async move(paths, to) {
+      await sleep(200);
+      const moved = [];
+      for (const p of paths) {
+        const it = files.find((f) => f.path === p);
+        if (!it) continue;
+        const np = to === '/' ? '/' + it.name : to.replace(/\/$/, '') + '/' + it.name;
+        if (np === it.path) continue;
+        if (files.some((f) => f.path === np)) throw new Error('目标里已经有同名的了：' + it.name);
+        const old = it.path;
+        it.path = np; it.parent = to;
+        files.filter((f) => f.path.indexOf(old + '/') === 0).forEach((f) => {
+          f.path = np + f.path.slice(old.length);
+          f.parent = f.path.replace(/\/[^/]*$/, '') || '/';
+        });
+        moved.push({ from: old, to: np });
+      }
+      return { ok: true, moved };
     },
     async tags() {
       await sleep(90);
@@ -393,8 +416,13 @@
     async list(path, tag, group) {
       return req('/api/list?path=' + encodeURIComponent(path) + filterQ(tag, group));
     },
-    async search(q, scope, tag, group) {
-      return req('/api/search?q=' + encodeURIComponent(q) + '&scope=' + (scope || 'all') + filterQ(tag, group));
+    async search(q, scope, tag, group, fields) {
+      return req('/api/search?q=' + encodeURIComponent(q) + '&scope=' + (scope || 'all') + filterQ(tag, group)
+        + (fields ? '&fields=' + fields : ''));
+    },
+    async move(paths, to) {
+      return req('/api/move', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths, to }) });
     },
     async tags() { return req('/api/tags'); },
     async tagSet(path, add, remove) {
@@ -455,7 +483,8 @@
     changePassword: (o, n) => (API.MOCK ? mock : real).changePassword(o, n),
     logout: () => (API.MOCK ? mock : real).logout(),
     list: (p, t, g) => (API.MOCK ? mock : real).list(p, t, g),
-    search: (q, s, t, g) => (API.MOCK ? mock : real).search(q, s, t, g),
+    search: (q, s, t, g, f) => (API.MOCK ? mock : real).search(q, s, t, g, f),
+    move: (ps, to) => (API.MOCK ? mock : real).move(ps, to),
     tags: () => (API.MOCK ? mock : real).tags(),
     tagSet: (p, add, rm) => (API.MOCK ? mock : real).tagSet(p, add, rm),
     tagCreate: (n, c, g) => (API.MOCK ? mock : real).tagCreate(n, c, g),
