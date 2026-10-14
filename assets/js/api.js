@@ -36,6 +36,12 @@
    GET  /api/list?path=&tag=<id>&group=<id>            ← 按标签 / 按分类筛选（只回带该标签/该分类的文件的）
    GET  /api/search?q=&scope=&tag=<id>&group=<id>      ← 同上；q 也能命中标签名
 
+   —— 头像（每人一张，前端压成 256 宽 JPEG 后上传）——
+   POST /api/avatar         (body=image/jpeg)          ← 设置自己的头像 → {ok,user}
+   POST /api/avatar/clear                              ← 移除自己的头像 → {ok,user}
+   GET  /api/avatar?id=<uid>[&t=<token>]               ← 取某人头像（登录可见）
+   user 里带 hasAvatar:bool；Item 里带 uploaderId + uploaderAvatar:bool
+
    Item  = {id,name,path,isDir,size,mtime,uploader,kind,thumb,tags:[Tag]}
            kind ∈ image|video|audio|pdf|doc|sheet|slide|code|archive|zip|text|other
    Tag   = {id, name, color, group}   group=分类 id（null=未分类）
@@ -111,24 +117,27 @@
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 
-  let SEQ = 1;
-  const files = seed.map(([dir, name, size, ago, uploader, forceDir]) => {
-    const isDir = forceDir === 'dir';
-    const path = (dir === '/' ? '' : dir) + '/' + name;
-    return {
-      id: 'f' + (SEQ++), name, path, parent: dir, isDir,
-      size: isDir ? 0 : size, mtime: now - ago,
-      uploader: isDir ? '' : uploader, kind: isDir ? 'dir' : kindOf(name),
-      thumb: isDir || kindOf(name) === 'image' ? placeholderThumb(name) : null
-    };
-  });
-
   const MOCK_USERS = [
     { id: 'u1', name: '林小满', nick: '班长', role: 'admin' },
     { id: 'u2', name: '陈小雨', nick: '宣传委员', role: 'member' },
     { id: 'u3', name: '王浩', nick: '同学', role: 'member' },
     { id: 'u4', name: '赵一鸣', nick: '同学', role: 'member' }
   ];
+  let SEQ = 1;
+  const uidOfName = (n) => ((MOCK_USERS.find((u) => u.name === n) || {}).id) || null;
+  const files = seed.map(([dir, name, size, ago, uploader, forceDir]) => {
+    const isDir = forceDir === 'dir';
+    const path = (dir === '/' ? '' : dir) + '/' + name;
+    return {
+      id: 'f' + (SEQ++), name, path, parent: dir, isDir,
+      size: isDir ? 0 : size, mtime: now - ago,
+      uploader: isDir ? '' : uploader, uploaderId: isDir ? null : uidOfName(uploader),
+      kind: isDir ? 'dir' : kindOf(name),
+      thumb: isDir || kindOf(name) === 'image' ? placeholderThumb(name) : null
+    };
+  });
+
+  const mockAvatars = {};                  // id -> dataURL（演示模式头像存在内存里）
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let mockUser = null;
   const uploads = {};   // uploadId -> Set(received chunk index)
@@ -161,7 +170,9 @@
   const tagById = (id) => MOCK_TAGS.find((t) => t.id === Number(id)) || null;
   const pubTag = (t) => ({ id: t.id, name: t.name, color: t.color, group: t.group == null ? null : t.group });
   const tagsOfPath = (p) => (fileTags[p] || []).map(tagById).filter(Boolean).map(pubTag);
-  const withTags = (f) => (f.isDir ? { ...f, tags: [] } : { ...f, tags: tagsOfPath(f.path) });
+  const withTags = (f) => (f.isDir
+    ? { ...f, tags: [], uploaderAvatar: false }
+    : { ...f, tags: tagsOfPath(f.path), uploaderAvatar: !!mockAvatars[f.uploaderId] });
   const isTagKind = (kind) => kind === 'image' || kind === 'video';
 
   const mock = {
@@ -171,6 +182,7 @@
       if (password !== '2526') throw new Error('密码不对（演示模式密码是 2526）');
       mockUser = MOCK_USERS.find((u) => u.name === username.trim()) ||
                  { id: 'u9', name: username.trim(), nick: '同学', role: 'member' };
+      mockUser.hasAvatar = !!mockAvatars[mockUser.id];
       return { token: 'mock-' + Date.now(), user: mockUser };
     },
     async me() { return { user: mockUser }; },
@@ -186,7 +198,7 @@
       if (invite !== '2526') throw new Error('班级口令不对（演示模式口令是 2526）');
       if (!username.trim()) throw new Error('用户名要填');
       if (password.length < 4) throw new Error('密码至少 4 位');
-      mockUser = { id: 'u' + Date.now(), name: username.trim(), nick: username.trim(), role: 'member' };
+      mockUser = { id: 'u' + Date.now(), name: username.trim(), nick: username.trim(), role: 'member', hasAvatar: false };
       return { token: 'mock-' + Date.now(), user: mockUser };
     },
     async list(path, tag, group) {
@@ -378,6 +390,25 @@
       item.size = blob.totalSize;
       files.push(item);
       return { done: true, item };
+    },
+    async setAvatar(blob) {
+      await sleep(160);
+      if (!blob || !blob.size) throw new Error('图片读不出来');
+      const url = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = () => rej(new Error('读取失败'));
+        r.readAsDataURL(blob);
+      });
+      mockUser = mockUser || { id: 'u9', name: '同学', role: 'member' };
+      mockAvatars[mockUser.id] = url;
+      mockUser.hasAvatar = true;
+      return { ok: true, user: mockUser };
+    },
+    async clearAvatar() {
+      await sleep(120);
+      if (mockUser) { delete mockAvatars[mockUser.id]; mockUser.hasAvatar = false; }
+      return { ok: true, user: mockUser };
     }
   };
 
@@ -489,6 +520,12 @@
       return req('/api/thumb?path=' + encodeURIComponent(path), {
         method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: jpegBlob
       });
+    },
+    async setAvatar(jpegBlob) {
+      return req('/api/avatar', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: jpegBlob });
+    },
+    async clearAvatar() {
+      return req('/api/avatar/clear', { method: 'POST' });
     }
   };
 
@@ -514,7 +551,9 @@
     remove: (ps) => (API.MOCK ? mock : real).delete(ps),
     uploadStatus: (id) => (API.MOCK ? mock : real).uploadStatus(id),
     uploadChunk: (o) => (API.MOCK ? mock : real).uploadChunk(o),
-    putThumb: (p, blob) => (API.MOCK ? Promise.resolve({ ok: true }) : real).putThumb(p, blob)
+    putThumb: (p, blob) => (API.MOCK ? Promise.resolve({ ok: true }) : real).putThumb(p, blob),
+    setAvatar: (blob) => (API.MOCK ? mock : real).setAvatar(blob),
+    clearAvatar: () => (API.MOCK ? mock : real).clearAvatar()
   });
 
   /* 预设标签的配色（前后端共用这一套名字） */
@@ -539,6 +578,12 @@
     if (item.localUrl) return item.localUrl;
     if (API.MOCK) return '#';
     return API.base + '/api/raw?path=' + encodeURIComponent(item.path) + (download ? '&dl=1' : '') + '&' + API.auth();
+  };
+  /* 头像地址：按用户 id 取（mock 用内存里的 dataURL） */
+  API.avatarUrl = function (id) {
+    if (id == null || id === '') return null;
+    if (API.MOCK) return mockAvatars[id] || null;
+    return API.base + '/api/avatar?id=' + encodeURIComponent(id) + '&' + API.auth();
   };
 
   window.API = API;

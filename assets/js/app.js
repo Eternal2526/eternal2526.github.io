@@ -71,6 +71,60 @@
   }
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  /* ---------------- 通用弹窗（代替浏览器 alert/confirm/prompt） ---------------- */
+  let dlgResolve = null, dlgHasInput = false;
+  function dlgFinish(result) {
+    const done = dlgResolve; dlgResolve = null;
+    $('#dlgModal').hidden = true;
+    if (done) done(result);
+  }
+  function openDialog(o) {
+    o = o || {};
+    return new Promise((resolve) => {
+      dlgResolve = resolve;
+      dlgHasInput = !!o.input;
+      $('#dlgTitle').textContent = o.title || '提示';
+      const msg = $('#dlgMsg');
+      if (o.message) { msg.textContent = o.message; msg.hidden = false; } else { msg.textContent = ''; msg.hidden = true; }
+      const field = $('#dlgField');
+      if (dlgHasInput) {
+        field.hidden = false;
+        $('#dlgLabel').textContent = o.label || '';
+        const inp = $('#dlgInput');
+        inp.value = o.value != null ? o.value : '';
+        inp.placeholder = o.placeholder || '';
+        inp.maxLength = o.maxlength || 255;
+      } else {
+        field.hidden = true;
+      }
+      $('#dlgErr').hidden = true;
+      const ok = $('#dlgOk');
+      ok.textContent = o.okText || '确定';
+      ok.className = 'btn ' + (o.danger ? 'btn-danger' : 'btn-primary');
+      $('#dlgCancel').textContent = o.cancelText || '取消';
+      $('#dlgModal').hidden = false;
+      if (dlgHasInput) setTimeout(() => { const i = $('#dlgInput'); i.focus(); i.select(); }, 30);
+    });
+  }
+  const uiConfirm = (o) => openDialog(Object.assign({ input: false, okText: '确定' }, o)).then((v) => v === true);
+  const uiPrompt = (o) => openDialog(Object.assign({ input: true, okText: '确定' }, o)).then((v) => (v == null ? null : String(v)));
+  $('#dlgOk').addEventListener('click', () => {
+    if (dlgHasInput) {
+      const v = $('#dlgInput').value;
+      if (!v.trim()) { const el = $('#dlgErr'); el.textContent = '这里不能是空的'; el.hidden = false; return; }
+      dlgFinish(v);
+    } else dlgFinish(true);
+  });
+  $('#dlgCancel').addEventListener('click', () => dlgFinish(dlgHasInput ? null : false));
+  $('#dlgClose').addEventListener('click', () => dlgFinish(dlgHasInput ? null : false));
+  $('#dlgModal').addEventListener('click', (e) => { if (e.target === $('#dlgModal')) dlgFinish(dlgHasInput ? null : false); });
+  $('#dlgInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('#dlgOk').click(); }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && dlgResolve) { e.stopPropagation(); dlgFinish(dlgHasInput ? null : false); }
+  }, true);
+
   /* 标签排序：按拼音首字母 A→Z（浏览器中文排序就是拼音序），数字/英文排在前面 */
   const zhColl = (() => { try { return new Intl.Collator('zh-Hans-CN-u-co-pinyin', { numeric: true }); } catch (e) { return null; } })();
   const byPinyin = (a, b) => (zhColl ? zhColl.compare(String(a), String(b))
@@ -105,10 +159,7 @@
 
   const SMART = [
     { key: 'all', label: '全部文件', icon: 'folder', to: '/' },
-    { key: 'mine', label: '我上传的', icon: 'image', scope: 'mine' },
-    { key: 'photo', label: '照片', icon: 'image', kinds: ['image'] },
-    { key: 'video', label: '视频', icon: 'video', kinds: ['video'] },
-    { key: 'doc', label: '文档', icon: 'doc', kinds: ['pdf', 'doc', 'sheet', 'slide', 'text', 'code'] }
+    { key: 'mine', label: '我上传的', icon: 'image', scope: 'mine' }
   ];
   let smart = 'all';
 
@@ -117,6 +168,7 @@
   $('#switchMode').addEventListener('click', () => {
     regMode = !regMode;
     $$('.reg-only').forEach((e) => { e.hidden = !regMode; });
+    $$('.login-only').forEach((e) => { e.hidden = regMode; });
     $('#loginBtn').textContent = regMode ? '注册并进入' : '进入';
     $('#switchMode').textContent = regMode ? '← 返回登录' : '没有账号？用班级口令注册';
     $('#passLabel').textContent = regMode ? '设置密码' : '密码';
@@ -125,12 +177,25 @@
     (regMode ? $('#regInvite') : $('#loginUser')).focus();
   });
 
+  function avatarInnerHTML() {
+    const u = state.user || {};
+    const src = u.hasAvatar ? API.avatarUrl(u.id) : null;
+    if (src) return `<img src="${esc(src)}" alt="">`;
+    const n = u.name || '?';
+    return esc(n.slice(-2, -1) || n[0] || '?');
+  }
+  function syncAvatarUI() {
+    const html = avatarInnerHTML();
+    const chip = $('#userAvatar'); if (chip) chip.innerHTML = html;
+    const pv = $('#avatarPreview'); if (pv) pv.innerHTML = html;
+    const clr = $('#avatarClear'); if (clr) clr.hidden = !(state.user && state.user.hasAvatar);
+  }
   function showApp() {
     $('#login').hidden = true;
     $('#app').hidden = false;
     $('#userName').textContent = state.user.name;
     $('#userRole').textContent = state.user.role === 'admin' ? '管理员' : '同学';
-    $('#userAvatar').textContent = state.user.name.slice(-2, -1) || state.user.name[0];
+    syncAvatarUI();
     load(state.folder);
     loadTree();
   }
@@ -472,7 +537,12 @@
       li.querySelector('[data-gdel]').addEventListener('click', async () => {
         const g = state.groups.find((x) => x.id === id) || { name: '' };
         const n = state.tags.filter((t) => t.group === id).length;
-        if (!confirm(`删除分类「${g.name}」？\n里面的 ${n} 个标签会变成「未分类」，不会删掉标签。`)) return;
+        const okd = await uiConfirm({
+          title: '删除分类',
+          message: `删除分类「${g.name}」？\n里面的 ${n} 个标签会变成「未分类」，不会删掉标签。`,
+          okText: '删除', danger: true
+        });
+        if (!okd) return;
         try {
           await API.tagGroupDelete(id, false);
           await refreshTags(); syncAllTags();
@@ -528,7 +598,12 @@
       li.querySelectorAll('.pal-dot').forEach((b) => b.addEventListener('click', () => save(undefined, b.dataset.c, undefined)));
       li.querySelector('[data-del]').addEventListener('click', async () => {
         const t = cur();
-        if (!confirm(`删除标签「${t.name || ''}」？\n（挂在文件上的这个标签也会一起摘掉，文件本身不动）`)) return;
+        const okd = await uiConfirm({
+          title: '删除标签',
+          message: `删除标签「${t.name || ''}」？\n挂在文件上的这个标签也会一起摘掉，文件本身不动。`,
+          okText: '删除', danger: true
+        });
+        if (!okd) return;
         try {
           await API.tagDelete(id);
           await refreshTags(); syncAllTags();
@@ -648,7 +723,7 @@
     const filesL = sortItems(list.filter((i) => !i.isDir));
     const all = dirs.concat(filesL);
 
-    box.className = 'files' + (state.view === 'list' ? ' list' : ' grid');
+    box.className = 'files' + (state.view === 'list' ? ' list' : ' grid') + (state.selMode ? ' sel-mode' : '');
     $$('.seg').forEach((b) => {
       const on = b.dataset.view === state.view;
       b.classList.toggle('is-on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -690,25 +765,25 @@
       $('#empty').hidden = true;
       box.innerHTML = state.view === 'list' ? all.map(rowHTML).join('') : all.map(cardHTML).join('');
     }
-    // 选择模式下的浮动操作栏
+    // 选择模式下的浮动操作栏（先清掉旧的，避免重复叠加）
+    const oldBar = document.querySelector('.sel-bar');
+    if (oldBar) oldBar.remove();
     if (state.selMode) {
       const selCount = state.selected.size;
       const bar = document.createElement('div');
       bar.className = 'sel-bar';
       bar.innerHTML = `<span class="sel-count">已选 ${selCount} 项</span>
-        <button class="btn btn-sm sel-op" data-act="tag">批量加标签</button>
-        <button class="btn btn-sm sel-op" data-act="move">移动到…</button>
+        <button class="btn btn-sm sel-op" data-act="tag"${selCount ? '' : ' disabled'}>批量加标签</button>
+        <button class="btn btn-sm sel-op" data-act="move"${selCount ? '' : ' disabled'}>移动到…</button>
         <button class="btn btn-sm sel-op" data-act="cancel">取消</button>`;
       document.querySelector('.main').appendChild(bar);
       bar.addEventListener('click', (e) => {
+        if (e.target.disabled) return;
         const act = e.target.dataset.act;
-        if (act === 'tag') batchAddTag();
+        if (act === 'tag') openBatchTag();
         else if (act === 'move') openBatchMove();
         else if (act === 'cancel') clearSelection();
       });
-    } else {
-      const oldBar = document.querySelector('.sel-bar');
-      if (oldBar) oldBar.remove();
     }
     bindItems();
   }
@@ -721,6 +796,7 @@
   function cardHTML(it) {
     const t = API.thumbUrl(it, 400);
     const isImg = it.kind === 'image' || it.kind === 'video';
+    const whoAv = (it.uploaderAvatar && it.uploaderId != null) ? API.avatarUrl(it.uploaderId) : null;
     const thumb = (isImg && t)
       ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async">`
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
@@ -728,8 +804,8 @@
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const selCheckbox = state.selMode
-      ? `<div class="sel-check${isSelected ? ' is-on' : ''}" data-path="${esc(it.path)}">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 11l3.5-5.5L22 8l-5 5-5 5l2.3 2.3L12 18l6-6z" fill="currentColor"/></svg>
+      ? `<div class="sel-check${isSelected ? ' is-on' : ''}" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>`
       : '';
     return `<article class="card${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
@@ -739,7 +815,7 @@
         <div class="fsub">
           ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
           <span>·</span><span>${fmtDate(it.mtime)}</span>
-          ${it.uploader ? `<span class="who">${esc(it.uploader)}</span>` : ''}
+          ${it.uploader ? `<span class="who">${whoAv ? `<img class="who-av" src="${esc(whoAv)}" alt="">` : ''}${esc(it.uploader)}</span>` : ''}
         </div>
       </div>
       <div class="acts">
@@ -755,20 +831,21 @@
   function rowHTML(it) {
     const t = API.thumbUrl(it, 120);
     const isImg = it.kind === 'image' || it.kind === 'video';
+    const whoAv = (it.uploaderAvatar && it.uploaderId != null) ? API.avatarUrl(it.uploaderId) : null;
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
     const mine = it.uploader === state.user.name;
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const selCheckbox = state.selMode
-      ? `<span class="sel-check${isSelected ? ' is-on' : ''}" data-path="${esc(it.path)}">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 11l3.5-5.5L22 8l-5 5-5 5l2.3 2.3L12 18l6-6z" fill="currentColor"/></svg>
+      ? `<span class="sel-check${isSelected ? ' is-on' : ''}" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>`
       : '';
     return `<div class="row${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <span class="ricon">${ico}</span>
       <span class="rname" title="${esc(it.name)}">${esc(it.name)}</span>
       <span class="rmeta">
-        ${it.uploader ? `<span class="who">${esc(it.uploader)}</span>` : ''}
+        ${it.uploader ? `<span class="who">${whoAv ? `<img class="who-av" src="${esc(whoAv)}" alt="">` : ''}${esc(it.uploader)}</span>` : ''}
         ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
         <span class="rdate">${fmtDate(it.mtime)}</span>
       </span>
@@ -783,7 +860,7 @@
   }
 
   function bindItems() {
-    $$('#files [data-path]').forEach((el) => {
+    $$('#files .card[data-path], #files .row[data-path]').forEach((el) => {
       const it = state.items.concat(state.allItems).find((x) => x.path === el.dataset.path) || { path: el.dataset.path, name: el.dataset.path.split('/').pop(), isDir: el.dataset.dir === '1', kind: el.dataset.kind };
       if (state.selMode) {
         // 选择模式：点击卡片任何位置（包括缩略图）切换选中状态
@@ -836,11 +913,14 @@
     });
   }
 
-  // 切换文件选择状态（不重新渲染，只更新DOM）
+  // 当前选中的文件（都在当前列表里）
+  const allSelectedItems = () => state.items.filter((i) => state.selected.has(i.path));
+
+  // 切换文件选择状态（不重新渲染，只更新 DOM）
   function toggleSelection(path) {
     const isAdding = !state.selected.has(path);
     if (isAdding) {
-      // 权限检查：普通用户只能选自己传的文件
+      // 普通用户只能选自己传的文件
       const file = state.items.find((i) => i.path === path) || state.allItems.find((i) => i.path === path);
       if (file && file.uploader && file.uploader !== state.user.name && state.user.role !== 'admin') {
         toast('只能选择自己上传的文件');
@@ -850,29 +930,25 @@
     } else {
       state.selected.delete(path);
     }
-    // 直接更新DOM，不重新渲染
-    const card = document.querySelector(`[data-path="${CSS.escape(path)}"]`);
-    if (card) {
-      card.classList.toggle('is-sel', isAdding);
-      const check = card.querySelector('.sel-check');
+    const el = document.querySelector(`.card[data-path="${CSS.escape(path)}"], .row[data-path="${CSS.escape(path)}"]`);
+    if (el) {
+      el.classList.toggle('is-sel', isAdding);
+      const check = el.querySelector('.sel-check');
       if (check) check.classList.toggle('is-on', isAdding);
     }
-    // 更新计数
-    if (state.selected.size === 0) {
-      state.selMode = false;
-      $('#selBtn').classList.remove('is-on');
-      $('#selBtn').setAttribute('aria-selected', 'false');
-      const bar = document.querySelector('.sel-bar');
-      if (bar) bar.remove();
-    } else {
-      $('#selBtn').classList.add('is-on');
-      $('#selBtn').setAttribute('aria-selected', 'true');
-      const countEl = document.querySelector('.sel-count');
-      if (countEl) countEl.textContent = `已选 ${state.selected.size} 项`;
-    }
+    syncSelBar();
   }
 
-  // 清除选择状态
+  // 更新浮动栏计数 / 按钮可用状态（不整页重绘，手感更顺）
+  function syncSelBar() {
+    const n = state.selected.size;
+    const countEl = document.querySelector('.sel-count');
+    if (countEl) countEl.textContent = `已选 ${n} 项`;
+    $$('.sel-bar .sel-op[data-act="tag"], .sel-bar .sel-op[data-act="move"]')
+      .forEach((b) => { b.disabled = n === 0; });
+  }
+
+  // 清除选择状态并退出选择模式
   function clearSelection() {
     state.selected.clear();
     state.selMode = false;
@@ -881,89 +957,86 @@
     render();
   }
 
-  // 批量加标签
-  async function batchAddTag() {
-    if (state.selected.size === 0) return;
-    // 获取选中的文件
-    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
-    // 显示标签选择浮层
-    const has = (id) => (selectedItems[0]?.tags || []).some((t) => t.id === id);
-    // 这里简化处理：使用现有的 openTagMenu，但针对多文件情况
-    // 实际应该显示一个批量标签浮层，但为了简化，我们使用 Promise.all 调用 /api/tag
-    // 先收集所有可用的标签
-    try {
-      const tagInfo = await API.tags();
-      const allTags = (tagInfo.tags || []).filter((t) => isTagKind(t.kind || 'image'));
-      // 简单实现：让用户从标签列表中选，然后对每个文件调用 tagSet
-      // 由于批量标签涉及 UI 复杂度，这里先实现一个基础版本：
-      // 1. 询问用户选择哪些标签
-      // 2. 对每个文件调用 /api/tag
-      
-      // 由于批量标签的UI较复杂（三态选择），这里提供一个提示
-      toast('批量加标签功能：选中文件后点右上角标签按钮，或使用批量接口 /api/tag-batch');
-      // 真正的批量实现需要在后端添加 /api/tag-batch 接口
-      // 这里演示 Promise.all 调用单文件接口的思路
-      /* 示例：
-      const tagIds = [2, 5]; // 用户选择的标签ID
-      await Promise.all(selectedItems.map(async (it) => {
-        await API.tagSet(it.path, tagIds, []);
-      }));
-      refreshTags();
-      render();
-      */
-    } catch (e) {
-      toast('获取标签列表失败: ' + e.message);
-    }
+  /* ---------- 批量加标签 ---------- */
+  let batchItems = [];
+  function closeBatchTag() { $('#batchTagModal').hidden = true; batchItems = []; }
+  function finishBatchTag() {
+    if (smart === 'tag') reapplyFilter(); else { render(); loadTree(); }
   }
-
-  // 批量移动
-  async function batchMove() {
-    if (state.selected.size === 0) return;
-    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
-    // 使用已有的 moveModal 逻辑，但传入 paths 数组
-    const to = prompt('移动到目录路径，如 /照片');
-    if (!to) return;
-    try {
-      await API.move(state.selected.toArray ? state.selected.toArray() : [...state.selected], to);
-      toast('移动成功');
-      clearSelection();
-      load(state.folder);
-    } catch (e) {
-      toast('移动失败: ' + e.message);
-    }
-  }
-
-  // 打开批量移动模态框
-  function openBatchMove() {
-    if (state.selected.size === 0) return;
-    const selectedItems = state.items.filter((i) => state.selected.has(i.path));
-    // 计算所有权
-    const allMine = selectedItems.every((i) => i.uploader === state.user.name || state.user.role === 'admin');
-    if (!allMine && state.user.role !== 'admin') {
-      toast('只能移动自己的文件');
-      return;
-    }
-    // 简单实现：提示目录路径
-    const to = prompt('移动到目录路径（如 /照片）：\n注意：文件夹不能移进自己');
-    if (to) {
-      try {
-        const paths = [...state.selected];
-        API.move(paths, to);
-        toast('移动请求已发送');
-        // 清除选择但不刷新，让用户确认
-      } catch (e) {
-        toast('移动失败: ' + e.message);
+  function renderBatchTags() {
+    const list = $('#batchTagList');
+    const media = batchItems.filter((i) => API.canTag(i));
+    if (!state.tags.length) { list.innerHTML = '<div class="bt-none">管理员还没有设置标签</div>'; return; }
+    const kw = ($('#batchTagFilter').value || '').trim().toLowerCase();
+    const hit = (t) => !kw || t.name.toLowerCase().includes(kw);
+    const countHas = (id) => media.filter((i) => (i.tags || []).some((t) => t.id === id)).length;
+    const row = (t) => {
+      const has = countHas(t.id);
+      const cls = has === 0 ? '' : (has === media.length ? 'is-on' : 'is-some');
+      const mark = has === 0 ? '' : (has === media.length ? '✓' : '−');
+      return `<button type="button" class="bt-item ${cls}" data-tid="${t.id}">
+        <span class="tg-dot" data-c="${esc(t.color)}"></span><span class="bt-name">${esc(t.name)}</span>
+        <span class="bt-box">${mark}</span></button>`;
+    };
+    let out = '';
+    if (state.groups.length) {
+      for (const g of sortGroups(state.groups)) {
+        const inG = sortTags(state.tags.filter((t) => t.group === g.id && hit(t)));
+        if (inG.length) out += `<div class="modal-sec">${esc(g.name)}</div>` + inG.map(row).join('');
       }
+      const loose = sortTags(state.tags.filter((t) => t.group == null && hit(t)));
+      if (loose.length) out += (state.groups.length ? '<div class="modal-sec">未分类</div>' : '') + loose.map(row).join('');
+    } else {
+      out = sortTags(state.tags.filter(hit)).map(row).join('');
     }
+    list.innerHTML = out || '<div class="bt-none">没有匹配的标签</div>';
   }
+  function openBatchTag() {
+    const items = allSelectedItems();
+    if (!items.length) return;
+    batchItems = items;
+    const media = items.filter((i) => API.canTag(i));
+    $('#batchTagSub').textContent = media.length === items.length
+      ? `给选中的 ${media.length} 个图片 / 视频加标签：`
+      : `已选 ${items.length} 项，其中 ${media.length} 个图片 / 视频可以加标签：`;
+    $('#batchTagFilter').value = '';
+    $('#batchTagModal').hidden = false;
+    renderBatchTags();
+  }
+  $('#batchTagList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-tid]');
+    if (!b) return;
+    const media = batchItems.filter((i) => API.canTag(i));
+    if (!media.length) { toast('选中的文件里没有能加标签的图片 / 视频', 3000); return; }
+    const id = Number(b.dataset.tid);
+    const has = media.filter((i) => (i.tags || []).some((t) => t.id === id)).length;
+    const add = has < media.length;          // 不是全都有 → 全部加上；全都有 → 全部去掉
+    b.disabled = true;
+    try {
+      await Promise.all(media.map(async (it) => {
+        const res = await API.tagSet(it.path, add ? [id] : [], add ? [] : [id]);
+        it.tags = res.tags || [];
+        syncItemTags(it);
+      }));
+      await refreshTags();
+      renderBatchTags();
+    } catch (err) { toast(err.message, 3600); }
+    finally { b.disabled = false; }
+  });
+  $('#batchTagFilter').addEventListener('input', renderBatchTags);
+  $('#batchTagClose').addEventListener('click', () => { closeBatchTag(); finishBatchTag(); });
+  $('#batchTagDone').addEventListener('click', () => { closeBatchTag(); finishBatchTag(); });
+  $('#batchTagModal').addEventListener('click', (e) => {
+    if (e.target === $('#batchTagModal')) { closeBatchTag(); finishBatchTag(); }
+  });
 
-  // 清除选择状态
-  function clearSelection() {
-    state.selected.clear();
-    state.selMode = false;
-    $('#selBtn').classList.remove('is-on');
-    $('#selBtn').setAttribute('aria-selected', 'false');
-    render();
+  /* ---------- 批量移动（复用「移动到」弹窗） ---------- */
+  function openBatchMove() {
+    const items = allSelectedItems();
+    if (!items.length) return;
+    const bad = items.find((i) => i.uploader && i.uploader !== state.user.name && state.user.role !== 'admin');
+    if (bad) { toast('只能移动自己上传的文件'); return; }
+    openMove(items);
   }
 
   function go(path) {
@@ -1037,7 +1110,7 @@
 
   $('#uploadBtn').addEventListener('click', () => $('#filePicker').click());
   $('#mkdirBtn').addEventListener('click', async () => {
-    const nn = prompt('文件夹名字');
+    const nn = await uiPrompt({ title: '新建文件夹', label: '文件夹名字', placeholder: '例如：2026 运动会', maxlength: 60, okText: '创建' });
     if (nn == null) return;
     const name = nn.trim();
     if (!name) { toast('名字不能为空'); return; }
@@ -1306,8 +1379,12 @@
   }
 
   async function removeItem(it) {
-    const tip = it.isDir ? `确定删除文件夹「${it.name}」？\n里面的东西会一起删掉。` : `确定删除「${it.name}」？`;
-    if (!confirm(tip)) return;
+    const okd = await uiConfirm({
+      title: it.isDir ? '删除文件夹' : '删除文件',
+      message: it.isDir ? `确定删除文件夹「${it.name}」？\n里面的东西会一起删掉。` : `确定删除「${it.name}」？`,
+      okText: '删除', danger: true
+    });
+    if (!okd) return;
     try {
       await API.remove([it.path]);
       const gone = (x) => x.path === it.path || x.path.indexOf(it.path.replace(/\/$/, '') + '/') === 0;
@@ -1320,7 +1397,7 @@
 
   /* 重命名（入口只在「自己传的 / 管理员」的菜单里出现） */
   async function renameItem(it) {
-    const nn = prompt('新名字：', it.name);
+    const nn = await uiPrompt({ title: '重命名', label: '新名字', value: it.name, maxlength: 120, okText: '保存' });
     if (nn == null) return;
     const name = nn.trim();
     if (!name) { toast('名字不能为空'); return; }
@@ -1373,7 +1450,7 @@
       closeCtx();
       if (k === 'info') openInfo(it);
       else if (k === 'rename') renameItem(it);
-      else if (k === 'move') openMove(it);
+      else if (k === 'move') openMove([it]);
       else if (k === 'tag') openTagMenu(it, anchor);
       else if (k === 'dl') download(it);
       else if (k === 'del') removeItem(it);
@@ -1409,13 +1486,19 @@
   $('#infoClose').addEventListener('click', () => { $('#infoModal').hidden = true; });
   $('#infoDone').addEventListener('click', () => { $('#infoModal').hidden = true; });
   $('#infoModal').addEventListener('click', (e) => { if (e.target === $('#infoModal')) $('#infoModal').hidden = true; });
-  $('#infoMove').addEventListener('click', () => { $('#infoModal').hidden = true; if (state.infoItem) openMove(state.infoItem); });
+  $('#infoMove').addEventListener('click', () => { $('#infoModal').hidden = true; if (state.infoItem) openMove([state.infoItem]); });
 
   /* ---------------- 移动 ---------------- */
-  let moveTarget = null, movePick = null;
-  async function openMove(it) {
-    moveTarget = it; movePick = null;
-    $('#moveSub').textContent = `把「${it.name}」移到哪个文件夹：`;
+  let moveItems = [], movePick = null;
+  async function openMove(items) {
+    moveItems = (Array.isArray(items) ? items : [items]).slice();
+    movePick = null;
+    const one = moveItems.length === 1 ? moveItems[0] : null;
+    const blocked = moveItems.map((i) => i.path);
+    const inBlocked = (p) => blocked.some((b) => p === b || p.indexOf(b.replace(/\/$/, '') + '/') === 0);
+    $('#moveSub').textContent = one
+      ? `把「${one.name}」移到哪个文件夹：`
+      : `把选中的 ${moveItems.length} 项移到哪个文件夹：`;
     $('#moveTree').innerHTML = '<div class="mv-load">正在读取目录…</div>';
     $('#moveOk').disabled = true;
     $('#moveModal').hidden = false;
@@ -1425,7 +1508,7 @@
       let r;
       try { r = await API.list(p); } catch (e) { return; }
       for (const d of r.items.filter((x) => x.isDir)) {
-        if (it.isDir && (d.path === it.path || d.path.indexOf(it.path + '/') === 0)) continue;  // 不能移进自己
+        if (inBlocked(d.path)) continue;                 // 不能移进自己或自己的子目录
         dirs.push({ path: d.path, name: d.name, depth });
         await walk(d.path, depth + 1);
       }
@@ -1448,14 +1531,15 @@
   $('#moveCancel').addEventListener('click', () => { $('#moveModal').hidden = true; });
   $('#moveModal').addEventListener('click', (e) => { if (e.target === $('#moveModal')) $('#moveModal').hidden = true; });
   $('#moveOk').addEventListener('click', async () => {
-    if (!moveTarget || !movePick) return;
+    if (!moveItems.length || !movePick) return;
     const btn = $('#moveOk');
     btn.disabled = true; btn.textContent = '移动中…';
     try {
-      const r = await API.move([moveTarget.path], movePick);
+      const r = await API.move(moveItems.map((i) => i.path), movePick);
       $('#moveModal').hidden = true;
       if (r && r.error) toast(r.error, 4200);
       else toast('已移到「' + (movePick === '/' ? '全部文件' : movePick.split('/').pop()) + '」');
+      clearSelection();
       await load(state.folder);
     } catch (e) { toast(e.message, 4200); }
     finally { btn.disabled = false; btn.textContent = '移到这个文件夹'; }
@@ -1538,6 +1622,8 @@
       $('#viewer').hidden = true; $('#viewerBody').innerHTML = '';
       closeDrawer(); closeTagMenu(); closeTagModal(); closeCtx();
       $('#infoModal').hidden = true; $('#moveModal').hidden = true;
+      $('#settingsModal').hidden = true;
+      if (!$('#batchTagModal').hidden) { closeBatchTag(); finishBatchTag(); }
     }
   });
 
@@ -1549,6 +1635,101 @@
     sb.classList.add('is-open');
     const sc = document.createElement('div'); sc.className = 'scrim'; sc.addEventListener('click', closeDrawer);
     document.body.appendChild(sc);
+  });
+
+  /* ---------------- 设置：主题 / 修改密码 ---------------- */
+  const LS_THEME = 'cd.theme';
+  const themePref = () => localStorage.getItem(LS_THEME) || 'system';
+  const sysDark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  function applyTheme(pref) {
+    const resolved = pref === 'dark' ? 'dark' : pref === 'light' ? 'light' : (sysDark() ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', resolved);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0f1512' : '#0f9d58');
+  }
+  function syncThemeOpts() {
+    const pref = themePref();
+    $$('#themeOpts .theme-opt').forEach((b) => {
+      const on = b.dataset.theme === pref;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  applyTheme(themePref());
+  syncThemeOpts();
+  $$('#themeOpts .theme-opt').forEach((b) => b.addEventListener('click', () => {
+    localStorage.setItem(LS_THEME, b.dataset.theme);
+    applyTheme(b.dataset.theme);
+    syncThemeOpts();
+  }));
+  if (window.matchMedia) {                       // 跟随系统时，系统切换深浅色要跟着变
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSys = () => { if (themePref() === 'system') applyTheme('system'); };
+    if (mq.addEventListener) mq.addEventListener('change', onSys);
+    else if (mq.addListener) mq.addListener(onSys);
+  }
+
+  function openSettings() {
+    syncThemeOpts();
+    syncAvatarUI();
+    $('#setPwErr').hidden = true;
+    $('#settingsModal').hidden = false;
+  }
+  $('#settingsBtn').addEventListener('click', openSettings);
+  $('#settingsClose').addEventListener('click', () => { $('#settingsModal').hidden = true; });
+  $('#settingsModal').addEventListener('click', (e) => { if (e.target === $('#settingsModal')) $('#settingsModal').hidden = true; });
+  $('#setPwForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#setPwErr'); err.hidden = true;
+    const oldPw = $('#setPwOld').value, n1 = $('#setPwNew').value, n2 = $('#setPwNew2').value;
+    if (n1 !== n2) { err.textContent = '两次输入的新密码不一样'; err.hidden = false; return; }
+    if (n1.length < 4) { err.textContent = '新密码至少 4 位'; err.hidden = false; return; }
+    const btn = $('#setPwBtn');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      const r = await API.changePassword(oldPw, n1);
+      state.user = r.user || Object.assign({}, state.user, { mustChange: false });
+      localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      $('#setPwOld').value = ''; $('#setPwNew').value = ''; $('#setPwNew2').value = '';
+      $('#settingsModal').hidden = true;
+      toast('密码已修改');
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = '保存新密码';
+    }
+  });
+
+  /* ---------------- 设置：头像 ---------------- */
+  $('#avatarPick').addEventListener('click', () => $('#avatarFile').click());
+  $('#avatarFile').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { toast('请选择图片文件'); return; }
+    const hint = $('#avatarHint'), old = hint.textContent;
+    hint.textContent = '处理中…';
+    try {
+      const blob = await makeImageThumb(f, 256);        // 缩到 ≤256 宽、JPEG
+      if (!blob) throw new Error('图片处理失败');
+      const r = await API.setAvatar(blob);
+      state.user = (r && r.user) || Object.assign({}, state.user, { hasAvatar: true });
+      localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      syncAvatarUI();
+      toast('头像已更新');
+    } catch (err) { toast(err.message, 3600); }
+    finally { hint.textContent = old; }
+  });
+  $('#avatarClear').addEventListener('click', async () => {
+    const okd = await uiConfirm({ title: '移除头像', message: '确定移除当前头像吗？', okText: '移除', danger: true });
+    if (!okd) return;
+    try {
+      const r = await API.clearAvatar();
+      state.user = (r && r.user) || Object.assign({}, state.user, { hasAvatar: false });
+      localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      syncAvatarUI();
+      toast('头像已移除');
+    } catch (e) { toast(e.message, 3600); }
   });
 
   /* ---------------- 启动 ---------------- */
