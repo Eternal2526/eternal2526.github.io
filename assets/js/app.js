@@ -1193,7 +1193,8 @@
           const blob = slice;
           blob.totalSize = task.file.size;
           try {
-            const r = await API.uploadChunk({ uploadId: task.uploadId, path: task.path, chunk: i, chunks: task.chunks, blob, offset: start });
+            const r = await API.uploadChunk({ uploadId: task.uploadId, path: task.path, chunk: i, chunks: task.chunks, blob, offset: start,
+                                            otime: task.file.lastModified });   // 带上原文件日期（服务端存成「原始日期」）
             const t = performance.now();
             if (task.lastT) {
               const inst = (slice.size / 1048576) / ((t - task.lastT) / 1000);
@@ -1478,6 +1479,7 @@
       ['类型', esc(it.isDir ? '文件夹' : (KIND_CN[it.kind] || '文件'))],
       ['大小', esc(it.isDir ? (it.size || 0) + ' 项' : fmtSize(it.size))],
       ['修改时间', esc(fmtDate(it.mtime))],
+      ['原始日期', it.otime ? esc(fmtDate(it.otime)) : '—'],   // 文件本身的时间（上传时的原文件时间戳）
       ['上传者', who],
       ['位置', esc(it.path)]
     ];
@@ -1678,10 +1680,10 @@
     else if (mq.addListener) mq.addListener(onSys);
   }
 
-  /* 字体：默认 / 鸿蒙黑体 / 霞鹜文楷（CSS 地址在 head 的 window.CD_FONTS 里，选了才按需加载） */
+  /* 字体：鸿蒙黑体（默认）/ 霞鹜文楷 / 系统（CSS 地址在 head 的 window.CD_FONTS 里，选了才按需加载） */
   const LS_FONT = 'cd.font';
   const FONT_CSS = window.CD_FONTS || {};
-  const fontPref = () => localStorage.getItem(LS_FONT) || 'default';
+  const fontPref = () => localStorage.getItem(LS_FONT) || 'harmony';
   function applyFont(pref) {
     let link = document.getElementById('fontCss');
     if (FONT_CSS[pref]) {

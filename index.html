@@ -16,7 +16,7 @@
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   } catch (e) {}
 })();
-/* 可选字体（都是中文网字计划拆分的子集字体，按需加载）：选了就尽早把对应 CSS 挂上
+/* 可选字体（都是中文网字计划拆分的子集字体，按需加载）：默认用「鸿蒙黑体」，选了就尽早把对应 CSS 挂上
    注意：霞鹜文楷原来那个 cn-font.claude-code-best.win 会检查 Referer，没有 Referer 的场合
    （本地双击 html / file:// / 更严的隐私设置）会返 403 导致整档字体加载不出来，所以换成
    unpkg 上同一套「中文网字计划」包的镜像（同一字体、同样按需分片，但没有防盗链） */
@@ -26,7 +26,7 @@ window.CD_FONTS = {
 };
 (function () {
   try {
-    var f = localStorage.getItem('cd.font') || 'default';
+    var f = localStorage.getItem('cd.font') || 'harmony';
     if (!window.CD_FONTS[f]) return;
     document.documentElement.setAttribute('data-font', f);
     var l = document.createElement('link');
@@ -348,9 +348,9 @@ window.CD_FONTS = {
 
     <div class="set-sec">字体</div>
     <div class="font-opts" id="fontOpts" role="group" aria-label="字体">
-      <button type="button" class="font-opt" data-font="default"><span class="fp">Aa</span><span>默认</span></button>
       <button type="button" class="font-opt" data-font="harmony"><span class="fp fp-harmony">汉字</span><span>鸿蒙黑体</span></button>
       <button type="button" class="font-opt" data-font="wenkai"><span class="fp fp-wenkai">汉字</span><span>霞鹜文楷</span></button>
+      <button type="button" class="font-opt" data-font="default"><span class="fp">Aa</span><span>系统字体</span></button>
     </div>
 
     <div class="set-sec">修改密码</div>

@@ -18,7 +18,7 @@
    POST /api/move           {paths:[...], to:"/目标目录"}  ← 移动（只能动自己传的，管理员不限）
    POST /api/rename         {path, name}                   ← 重命名（只能改自己传的，管理员不限）
    POST /api/delete         {paths:["/a.jpg"]}        ← 服务端必须校验"只能删自己传的"
-   POST /api/upload         ?uploadId=&path=&chunk=&chunks=  (body=该分片原始字节)
+   POST /api/upload         ?uploadId=&path=&chunk=&chunks=&offset=&total=&otime=  (body=该分片原始字节；otime=原文件修改时间ms → 落库当「原始日期」)
                             → {done:false} | {done:true,item:Item}
    GET  /api/upload/status?uploadId=                  → {received:[0,2,3]}   ← 断点续传
    GET  /api/raw?path=/a.jpg                          → 302 直链 / 文件流
@@ -42,7 +42,8 @@
    GET  /api/avatar?id=<uid>[&t=<token>]               ← 取某人头像（登录可见）
    user 里带 hasAvatar:bool；Item 里带 uploaderId + uploaderAvatar:bool
 
-   Item  = {id,name,path,isDir,size,mtime,uploader,kind,thumb,tags:[Tag]}
+   Item  = {id,name,path,isDir,size,mtime,otime,uploader,kind,thumb,tags:[Tag]}
+           mtime = 文件进到服务器的时间；otime = 文件本身的「原始日期」（老文件/没传的为 null）
            kind ∈ image|video|audio|pdf|doc|sheet|slide|code|archive|zip|text|other
    Tag   = {id, name, color, group}   group=分类 id（null=未分类）
            color ∈ green|blue|purple|orange|red|teal
@@ -131,6 +132,7 @@
     return {
       id: 'f' + (SEQ++), name, path, parent: dir, isDir,
       size: isDir ? 0 : size, mtime: now - ago,
+      otime: isDir ? null : now - ago - 100 * 86400000,   // 演示用：装成「原文件日期」比上传早 100 天
       uploader: isDir ? '' : uploader, uploaderId: isDir ? null : uidOfName(uploader),
       kind: isDir ? 'dir' : kindOf(name),
       thumb: isDir || kindOf(name) === 'image' ? placeholderThumb(name) : null
@@ -373,7 +375,7 @@
       await sleep(80);
       return { received: [...(uploads[uploadId] || [])] };
     },
-    async uploadChunk({ uploadId, path, chunk, chunks, blob }) {
+    async uploadChunk({ uploadId, path, chunk, chunks, blob, otime }) {
       // 模拟网络：~5MB/s 吞吐 + 偶尔一次分片抖动（用来演示断点续传）
       const mb = blob.size / 1048576;
       await sleep(Math.max(90, mb * 200));
@@ -384,7 +386,8 @@
       const parent = path.replace(/\/[^/]+$/, '') || '/';
       const item = {
         id: 'f' + (SEQ++), name, path, parent, isDir: false,
-        size: blob.totalSize, mtime: Date.now(), uploader: mockUser?.name || '我',
+        size: blob.totalSize, mtime: Date.now(), otime: otime || null,
+        uploader: mockUser?.name || '我',
         kind: kindOf(name), thumb: null, tags: [], __local: true
       };
       item.size = blob.totalSize;
@@ -515,9 +518,10 @@
       return req('/api/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }) });
     },
     async uploadStatus(uploadId) { return req('/api/upload/status?uploadId=' + encodeURIComponent(uploadId)); },
-    async uploadChunk({ uploadId, path, chunk, chunks, blob, offset }) {
+    async uploadChunk({ uploadId, path, chunk, chunks, blob, offset, otime }) {
       const q = `?uploadId=${encodeURIComponent(uploadId)}&path=${encodeURIComponent(path)}` +
-                `&chunk=${chunk}&chunks=${chunks}&total=${blob.totalSize}&offset=${offset != null ? offset : chunk * CHUNK_SIZE}`;
+                `&chunk=${chunk}&chunks=${chunks}&total=${blob.totalSize}&offset=${offset != null ? offset : chunk * CHUNK_SIZE}` +
+                (otime ? `&otime=${otime}` : '');
       return req('/api/upload' + q, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
     },
     async putThumb(path, jpegBlob) {
