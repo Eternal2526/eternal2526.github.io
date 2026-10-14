@@ -16,6 +16,26 @@
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   } catch (e) {}
 })();
+/* 可选字体（都是中文网字计划拆分的子集字体，按需加载）：选了就尽早把对应 CSS 挂上
+   注意：霞鹜文楷原来那个 cn-font.claude-code-best.win 会检查 Referer，没有 Referer 的场合
+   （本地双击 html / file:// / 更严的隐私设置）会返 403 导致整档字体加载不出来，所以换成
+   unpkg 上同一套「中文网字计划」包的镜像（同一字体、同样按需分片，但没有防盗链） */
+window.CD_FONTS = {
+  harmony: 'https://unpkg.com/harmonyos-sans-sc-webfont-splitted@1.1.0/dist/Regular.css',
+  wenkai: 'https://unpkg.com/cn-fontsource-lxgw-wen-kai-screen@1.0.6/font.css'
+};
+(function () {
+  try {
+    var f = localStorage.getItem('cd.font') || 'default';
+    if (!window.CD_FONTS[f]) return;
+    document.documentElement.setAttribute('data-font', f);
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.id = 'fontCss';
+    l.href = window.CD_FONTS[f];
+    document.head.appendChild(l);
+  } catch (e) {}
+})();
 </script>
 </head>
 <body>
@@ -96,9 +116,14 @@
         <span class="brand-dot"></span>
         <span class="brand-name">班级网盘</span>
       </div>
-      <button class="icon-btn" id="settingsBtn" title="设置" aria-label="设置">
-        <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13.2a7.7 7.7 0 0 0 0-2.4l1.8-1.4-1.9-3.3-2.2.9a7.6 7.6 0 0 0-2-1.2L14.7 3H10.5l-.4 2.8a7.6 7.6 0 0 0-2 1.2l-2.2-.9-1.9 3.3 1.8 1.4a7.7 7.7 0 0 0 0 2.4l-1.8 1.4 1.9 3.3 2.2-.9c.6.5 1.3.9 2 1.2l.4 2.8h4.2l.4-2.8c.7-.3 1.4-.7 2-1.2l2.2.9 1.9-3.3-1.8-1.4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      </button>
+      <div class="side-top-actions">
+        <button class="icon-btn" id="noticeBtn" title="公告" aria-label="公告">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3.2a5.8 5.8 0 0 0-5.8 5.8c0 3.9-1.4 5-2.1 5.7-.3.3-.1.9.3.9h15.2c.4 0 .6-.6.3-.9-.7-.7-2.1-1.8-2.1-5.7A5.8 5.8 0 0 0 12 3.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.6 18.9a2.4 2.4 0 0 0 4.8 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+        <button class="icon-btn" id="settingsBtn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" width="19" height="19"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13.2a7.7 7.7 0 0 0 0-2.4l1.8-1.4-1.9-3.3-2.2.9a7.6 7.6 0 0 0-2-1.2L14.7 3H10.5l-.4 2.8a7.6 7.6 0 0 0-2 1.2l-2.2-.9-1.9 3.3 1.8 1.4a7.7 7.7 0 0 0 0 2.4l-1.8 1.4 1.9 3.3 2.2-.9c.6.5 1.3.9 2 1.2l.4 2.8h4.2l.4-2.8c.7-.3 1.4-.7 2-1.2l2.2.9 1.9-3.3-1.8-1.4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
     </div>
 
     <nav class="tree" id="tree" aria-label="目录">
@@ -291,16 +316,17 @@
   </div>
 </div>
 
-<!-- ============ 设置（主题 / 修改密码） ============ -->
-<div id="settingsModal" class="modal" hidden>
-  <div class="modal-card modal-sm" role="dialog" aria-label="设置">
-    <div class="modal-head">
-      <b>设置</b>
-      <button class="icon-btn" id="settingsClose" aria-label="关闭">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="modal-sec">头像</div>
+<!-- ============ 设置（独立页面：头像 / 主题 / 修改密码 / 关于） ============ -->
+<div id="settingsScreen" class="settings-screen" hidden>
+  <div class="settings-head">
+    <button class="icon-btn" id="settingsBack" aria-label="返回">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <b>设置</b>
+  </div>
+  <div class="settings-body">
+
+    <div class="set-sec">头像</div>
     <div class="avatar-set">
       <span class="avatar avatar-lg" id="avatarPreview">?</span>
       <div class="avatar-set-info">
@@ -312,13 +338,22 @@
       </div>
       <input type="file" id="avatarFile" accept="image/*" hidden>
     </div>
-    <div class="modal-sec">主题</div>
+
+    <div class="set-sec">主题</div>
     <div class="theme-opts" id="themeOpts" role="group" aria-label="主题">
       <button type="button" class="theme-opt" data-theme="system"><span class="tp"></span><span>跟随系统</span></button>
       <button type="button" class="theme-opt" data-theme="light"><span class="tp"></span><span>浅色</span></button>
       <button type="button" class="theme-opt" data-theme="dark"><span class="tp"></span><span>深色</span></button>
     </div>
-    <div class="modal-sec">修改密码</div>
+
+    <div class="set-sec">字体</div>
+    <div class="font-opts" id="fontOpts" role="group" aria-label="字体">
+      <button type="button" class="font-opt" data-font="default"><span class="fp">Aa</span><span>默认</span></button>
+      <button type="button" class="font-opt" data-font="harmony"><span class="fp fp-harmony">汉字</span><span>鸿蒙黑体</span></button>
+      <button type="button" class="font-opt" data-font="wenkai"><span class="fp fp-wenkai">汉字</span><span>霞鹜文楷</span></button>
+    </div>
+
+    <div class="set-sec">修改密码</div>
     <form id="setPwForm" class="setpw-form">
       <label class="field">
         <span>当前密码</span>
@@ -333,10 +368,38 @@
         <input id="setPwNew2" type="password" autocomplete="new-password" required>
       </label>
       <div id="setPwErr" class="login-err" role="alert" hidden></div>
-      <div class="modal-foot">
+      <div class="setpw-actions">
         <button class="btn btn-primary" type="submit" id="setPwBtn">保存新密码</button>
       </div>
     </form>
+
+    <div class="set-sec">关于</div>
+    <div class="about">
+      <div class="about-meta">
+        <div><span>开发</span><b>Finch</b></div>
+        <div><span>上线日期</span><b>2026.10.11</b></div>
+      </div>
+      <div class="about-sub">Thank list</div>
+      <ul class="about-list">
+        <li>
+          <span class="about-logo"><img src="assets/img/deepseek.svg" alt="DeepSeek"></span>
+          <span class="about-name">DeepSeek</span>
+        </li>
+        <li>
+          <span class="about-logo"><img src="assets/img/hermes.png" alt="Hermes"></span>
+          <span class="about-name">Hermes</span>
+        </li>
+        <li>
+          <span class="about-logo"><img src="assets/img/dynv6.svg" alt="Dynv6"></span>
+          <span class="about-name">Dynv6</span>
+        </li>
+        <li>
+          <span class="about-logo about-logo-heart"><span class="about-heart" aria-hidden="true">❤</span></span>
+          <span class="about-name">25、26 班所有同学的支持</span>
+        </li>
+      </ul>
+    </div>
+
   </div>
 </div>
 
@@ -376,6 +439,23 @@
     <div class="modal-foot">
       <button class="btn" type="button" id="dlgCancel">取消</button>
       <button class="btn btn-primary" type="button" id="dlgOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 公告 ============ -->
+<div id="noticeModal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="noticeTitle">
+    <div class="modal-head">
+      <b id="noticeTitle">公告</b>
+      <button class="icon-btn" id="noticeClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <!-- 公告正文由 JS 渲染：优先从服务器 /api/notice 拉，取不到用本地 assets/notice.json -->
+    <div class="notice-body" id="noticeBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="noticeOk" type="button">已了解（三天内不再展示）</button>
     </div>
   </div>
 </div>

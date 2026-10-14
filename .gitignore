@@ -6,6 +6,10 @@ STATUS.md
 # 后端源码（含邀请码默认值），单独维护，不随前端发到 GitHub Pages
 backend/
 
+# 需求/公告草稿：只在本机留一份，不进公网仓库（网页用的是 assets/notice.json）
+公告.txt
+关于.txt
+
 # 运行时 / 临时文件
 .portal/
 *.part

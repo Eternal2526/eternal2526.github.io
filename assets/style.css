@@ -196,8 +196,8 @@ button,input,select{font:inherit;color:inherit}
 .card .fname{font-size:13.5px;font-weight:600;line-height:1.35;word-break:break-all;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card .fsub{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
-.card .who{display:inline-flex;align-items:center;gap:4px;max-width:100%;
-  background:var(--brand-soft);color:var(--brand-ink);border-radius:99px;padding:1px 7px;font-weight:600}
+/* 卡片上的标签（取代原来的上传者位置） */
+.card .ftags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .card .acts{position:absolute;right:6px;top:6px;display:flex;gap:4px;opacity:0;transition:.16s}
 .card:hover .acts,.card:focus-within .acts{opacity:1}
 /* 选择模式下隐藏卡片操作按钮，让整张卡片都是干净的点击区域 */
@@ -261,7 +261,10 @@ button,input,select{font:inherit;color:inherit}
 .tree-item.is-nest{padding-left:22px}
 .tg-sub{margin:6px 10px 3px;font-size:11px;letter-spacing:.5px;color:var(--ink-3)}
 .tg-empty{padding:4px 10px 8px 24px;font-size:12px;color:var(--ink-3)}
-.row .tags,.row .rtags{display:flex;gap:4px;flex:none}
+.row .rtags{display:flex;gap:4px;flex:none;align-items:center;min-width:0}
+/* 「详细信息」里的上传者（头像 + 名字） */
+.info-row .who-inline{display:inline-flex;align-items:center;gap:5px;min-width:0}
+.info-row .who-inline .who-av{width:17px;height:17px}
 
 /* 标签浮层 */
 .tagmenu{position:fixed;z-index:96;width:250px;background:var(--panel);border:1px solid var(--line);
@@ -430,7 +433,7 @@ button,input,select{font:inherit;color:inherit}
   .topbar{gap:8px}
   .toolbar{flex-wrap:wrap;gap:8px}
   .row .rmeta .rdate{display:none}
-  .row .tags{display:none}
+  .row .rtags{display:none}
 }
 
 /* ---------- 搜索范围按钮（标签 / 文件名 / 上传者） ---------- */
@@ -504,19 +507,30 @@ button,input,select{font:inherit;color:inherit}
 .login-notice ol{margin:0;padding-left:19px}
 .login-notice li{margin:2px 0}
 
-/* ---------- 设置（主题 / 改密码） ---------- */
-.theme-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.theme-opt{
+/* ---------- 设置（主题 / 字体 / 改密码） ---------- */
+.theme-opts,.font-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.theme-opt,.font-opt{
   display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 6px 9px;cursor:pointer;
   background:var(--panel-2);border:1.5px solid var(--line-strong);border-radius:var(--r-md);
   color:var(--ink-2);font-size:12.5px;font-weight:600;transition:.16s background,.16s border-color,.16s color;
 }
-.theme-opt:hover{border-color:var(--ink-3);color:var(--ink)}
-.theme-opt.is-on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
-.theme-opt .tp{width:100%;height:36px;border-radius:8px;border:1px solid var(--line);overflow:hidden}
+.theme-opt:hover,.font-opt:hover{border-color:var(--ink-3);color:var(--ink)}
+.theme-opt.is-on,.font-opt.is-on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.theme-opt .tp,.font-opt .fp{width:100%;height:36px;border-radius:8px;border:1px solid var(--line);overflow:hidden}
+.theme-opt .tp{background:#f5f7f6}
 .theme-opt[data-theme="system"] .tp{background:linear-gradient(90deg,#f5f7f6 50%,#0f1512 50%)}
 .theme-opt[data-theme="light"] .tp{background:#f5f7f6}
 .theme-opt[data-theme="dark"] .tp{background:#0f1512}
+.font-opt .fp{display:grid;place-items:center;background:var(--panel);font-size:17px;font-weight:500;color:var(--ink-2)}
+.fp-harmony{font-family:"HarmonyOS Sans SC",sans-serif}
+.fp-wenkai{font-family:"LXGW WenKai Screen",serif}
+/* 选了非默认字体时整站换字：只覆盖 font-family，字号/行高仍走 body 的 font 简写 */
+html[data-font="harmony"] body{
+  font-family:"HarmonyOS Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,"Segoe UI",Roboto,sans-serif;
+}
+html[data-font="wenkai"] body{
+  font-family:"LXGW WenKai Screen",-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,"Segoe UI",Roboto,serif;
+}
 .setpw-form{margin-top:4px}
 .setpw-form .field{margin-bottom:11px}
 .avatar-set{display:flex;align-items:center;gap:14px}
@@ -538,4 +552,41 @@ button,input,select{font:inherit;color:inherit}
 .bt-item.is-on .bt-box,.bt-item.is-some .bt-box{background:var(--brand);border-color:var(--brand)}
 .bt-item.is-some .bt-box{color:#fff}
 .bt-none{padding:16px;text-align:center;color:var(--ink-3);font-size:13px}
+
+/* ---------- 设置：独立页面（头像 / 主题 / 修改密码 / 关于） ---------- */
+.side-top-actions{display:flex;align-items:center;gap:2px}
+.settings-screen{position:fixed;inset:0;z-index:70;background:var(--bg);overflow-y:auto;animation:fade .16s ease}
+.settings-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;
+  padding:11px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.settings-head b{font-size:16px}
+.settings-body{max-width:640px;margin:0 auto;padding:16px 18px 48px}
+.set-sec{margin:22px 0 10px;font-size:11.5px;letter-spacing:.6px;color:var(--ink-3);text-transform:uppercase}
+.set-sec:first-child{margin-top:0}
+.setpw-actions{display:flex;justify-content:flex-end;margin-top:4px}
+
+/* 关于 */
+.about-meta{display:grid;gap:8px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:13px 15px}
+.about-meta>div{display:flex;gap:12px;font-size:13.5px}
+.about-meta span{width:62px;flex:none;color:var(--ink-3)}
+.about-sub{margin:16px 0 8px;font-size:12.5px;color:var(--ink-3)}
+.about-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.about-list li{display:flex;align-items:center;gap:11px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 13px}
+.about-logo{width:44px;height:34px;flex:none;display:grid;place-items:center;background:#fff;
+  border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.about-logo img{max-width:34px;max-height:21px;display:block}
+.about-name{font-weight:600;font-size:14px}
+.about-note{font-size:12px;color:var(--ink-3)}
+.about-logo-heart{background:#fff2f5;border-color:#f4cbd8}
+.about-heart{font-size:19px;line-height:1;color:#e5486a}
+
+/* 公告 */
+.notice-body{font-size:13.5px;line-height:1.72;color:var(--ink-2)}
+.notice-body p{margin:0}
+.notice-body h3{margin:15px 0 5px;font-size:14px;color:var(--ink)}
+.notice-body h3:first-child{margin-top:0}
+.notice-body ol{margin:0;padding-left:20px}
+.notice-body li{margin:4px 0}
+.notice-body li::marker{color:var(--ink-3)}
 

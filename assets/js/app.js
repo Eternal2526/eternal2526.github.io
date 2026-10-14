@@ -198,6 +198,7 @@
     syncAvatarUI();
     load(state.folder);
     loadTree();
+    maybeShowNotice();
   }
 
   $('#loginForm').addEventListener('submit', async (e) => {
@@ -351,13 +352,14 @@
     }
   }
 
-  function tagsHTML(it, max) {
+  /* 标签小片（卡片 / 列表共用；文件夹没有标签，不会调用）：最多 max 个，多的折成 +N */
+  function tagChips(it, max) {
     const ts = it.tags || [];
     if (!ts.length) return '';
     const show = ts.slice(0, max || 3);
-    return `<div class="tags">` + show.map((t) =>
+    return show.map((t) =>
       `<span class="tag" data-c="${esc(t.color)}">${esc(t.name)}</span>`).join('') +
-      (ts.length > show.length ? `<span class="tag is-more">+${ts.length - show.length}</span>` : '') + `</div>`;
+      (ts.length > show.length ? `<span class="tag is-more">+${ts.length - show.length}</span>` : '');
   }
   const chipHTML = (ts) => (ts || []).map((t) =>
     `<span class="tag" data-c="${esc(t.color)}">${esc(t.name)}</span>`).join('');
@@ -796,7 +798,6 @@
   function cardHTML(it) {
     const t = API.thumbUrl(it, 400);
     const isImg = it.kind === 'image' || it.kind === 'video';
-    const whoAv = (it.uploaderAvatar && it.uploaderId != null) ? API.avatarUrl(it.uploaderId) : null;
     const thumb = (isImg && t)
       ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async">`
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
@@ -808,6 +809,8 @@
           <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>`
       : '';
+    const chips = it.isDir ? '' : tagChips(it, 3);
+    // 卡片副信息只放「大小 / 修改时间」+ 标签；上传者不放这里，去「详细信息」里看
     return `<article class="card${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <div class="thumb">${it.isDir ? `<div class="ph">${ICON.folder}<b>文件夹</b></div>` : thumb + badgeKind(it)}</div>
       <div class="meta">
@@ -815,8 +818,8 @@
         <div class="fsub">
           ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
           <span>·</span><span>${fmtDate(it.mtime)}</span>
-          ${it.uploader ? `<span class="who">${whoAv ? `<img class="who-av" src="${esc(whoAv)}" alt="">` : ''}${esc(it.uploader)}</span>` : ''}
         </div>
+        ${chips ? `<div class="ftags">${chips}</div>` : ''}
       </div>
       <div class="acts">
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
@@ -831,11 +834,11 @@
   function rowHTML(it) {
     const t = API.thumbUrl(it, 120);
     const isImg = it.kind === 'image' || it.kind === 'video';
-    const whoAv = (it.uploaderAvatar && it.uploaderId != null) ? API.avatarUrl(it.uploaderId) : null;
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
     const mine = it.uploader === state.user.name;
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
+    const chips = it.isDir ? '' : tagChips(it, 3);
     const selCheckbox = state.selMode
       ? `<span class="sel-check${isSelected ? ' is-on' : ''}" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -844,11 +847,11 @@
     return `<div class="row${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <span class="ricon">${ico}</span>
       <span class="rname" title="${esc(it.name)}">${esc(it.name)}</span>
-      <span class="rmeta">
-        ${it.uploader ? `<span class="who">${whoAv ? `<img class="who-av" src="${esc(whoAv)}" alt="">` : ''}${esc(it.uploader)}</span>` : ''}
+      <div class="rmeta">
+        ${chips ? `<span class="rtags">${chips}</span>` : ''}
         ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
         <span class="rdate">${fmtDate(it.mtime)}</span>
-      </span>
+      </div>
       <span class="racts">
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
         ${it.isDir ? '' : `<button class="icon-btn" data-act="dl" title="下载">${ICON.dl}</button>`}
@@ -1465,16 +1468,21 @@
   function openInfo(it) {
     state.infoItem = it;
     const tags = it.tags || [];
+    // 上传者只在这里出现（卡片/列表不再展示）
+    const whoAv = (it.uploaderAvatar && it.uploaderId != null) ? API.avatarUrl(it.uploaderId) : null;
+    const who = whoAv
+      ? `<span class="who-inline"><img class="who-av" src="${esc(whoAv)}" alt="">${esc(it.uploader || '—')}</span>`
+      : esc(it.uploader || '—');
     const rows = [
-      ['名称', it.name],
-      ['类型', it.isDir ? '文件夹' : (KIND_CN[it.kind] || '文件')],
-      ['大小', it.isDir ? (it.size || 0) + ' 项' : fmtSize(it.size)],
-      ['修改时间', fmtDate(it.mtime)],
-      ['上传者', it.uploader || '—'],
-      ['位置', it.path]
+      ['名称', esc(it.name)],
+      ['类型', esc(it.isDir ? '文件夹' : (KIND_CN[it.kind] || '文件'))],
+      ['大小', esc(it.isDir ? (it.size || 0) + ' 项' : fmtSize(it.size))],
+      ['修改时间', esc(fmtDate(it.mtime))],
+      ['上传者', who],
+      ['位置', esc(it.path)]
     ];
     $('#infoBody').innerHTML = rows.map(([k, v]) =>
-      `<div class="info-row"><span>${k}</span><b>${esc(String(v))}</b></div>`).join('') +
+      `<div class="info-row"><span>${k}</span><b>${v}</b></div>`).join('') +
       `<div class="info-row info-tags"><span>标签</span><div class="tags">${
         tags.length ? chipHTML(tags) : '<i class="info-none">还没加标签</i>'}</div></div>` +
       (API.canTag(it) ? `<div class="info-actions"><button class="btn btn-ghost btn-sm" id="infoTagBtn">${ICON.tag} 加标签</button></div>` : '');
@@ -1622,7 +1630,8 @@
       $('#viewer').hidden = true; $('#viewerBody').innerHTML = '';
       closeDrawer(); closeTagMenu(); closeTagModal(); closeCtx();
       $('#infoModal').hidden = true; $('#moveModal').hidden = true;
-      $('#settingsModal').hidden = true;
+      $('#settingsScreen').hidden = true;
+      closeNotice();
       if (!$('#batchTagModal').hidden) { closeBatchTag(); finishBatchTag(); }
     }
   });
@@ -1669,15 +1678,55 @@
     else if (mq.addListener) mq.addListener(onSys);
   }
 
+  /* 字体：默认 / 鸿蒙黑体 / 霞鹜文楷（CSS 地址在 head 的 window.CD_FONTS 里，选了才按需加载） */
+  const LS_FONT = 'cd.font';
+  const FONT_CSS = window.CD_FONTS || {};
+  const fontPref = () => localStorage.getItem(LS_FONT) || 'default';
+  function applyFont(pref) {
+    let link = document.getElementById('fontCss');
+    if (FONT_CSS[pref]) {
+      document.documentElement.setAttribute('data-font', pref);
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.id = 'fontCss';
+        document.head.appendChild(link);
+      }
+      if (link.getAttribute('href') !== FONT_CSS[pref]) link.setAttribute('href', FONT_CSS[pref]);
+    } else {                                       // 默认字体：撤掉外链，回系统字体
+      document.documentElement.removeAttribute('data-font');
+      if (link) link.remove();
+    }
+  }
+  function syncFontOpts() {
+    const pref = fontPref();
+    $$('#fontOpts .font-opt').forEach((b) => {
+      const on = b.dataset.font === pref;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  applyFont(fontPref());
+  syncFontOpts();
+  $$('#fontOpts .font-opt').forEach((b) => b.addEventListener('click', () => {
+    localStorage.setItem(LS_FONT, b.dataset.font);
+    applyFont(b.dataset.font);
+    syncFontOpts();
+  }));
+
   function openSettings() {
     syncThemeOpts();
+    syncFontOpts();
     syncAvatarUI();
     $('#setPwErr').hidden = true;
-    $('#settingsModal').hidden = false;
+    closeDrawer();
+    const sc = $('#settingsScreen');
+    sc.hidden = false;
+    sc.scrollTop = 0;
   }
+  function closeSettings() { $('#settingsScreen').hidden = true; }
   $('#settingsBtn').addEventListener('click', openSettings);
-  $('#settingsClose').addEventListener('click', () => { $('#settingsModal').hidden = true; });
-  $('#settingsModal').addEventListener('click', (e) => { if (e.target === $('#settingsModal')) $('#settingsModal').hidden = true; });
+  $('#settingsBack').addEventListener('click', closeSettings);
   $('#setPwForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('#setPwErr'); err.hidden = true;
@@ -1691,7 +1740,7 @@
       state.user = r.user || Object.assign({}, state.user, { mustChange: false });
       localStorage.setItem(LS_USER, JSON.stringify(state.user));
       $('#setPwOld').value = ''; $('#setPwNew').value = ''; $('#setPwNew2').value = '';
-      $('#settingsModal').hidden = true;
+      closeSettings();
       toast('密码已修改');
     } catch (ex) {
       err.textContent = ex.message; err.hidden = false;
@@ -1730,6 +1779,71 @@
       syncAvatarUI();
       toast('头像已移除');
     } catch (e) { toast(e.message, 3600); }
+  });
+
+  /* ---------------- 公告 ----------------
+     内容放在服务器：GET /api/notice（后台可随时改，网页每次登录都会重新拉）；
+     拉不到时退回本地 assets/notice.json（离线也能看）。 */
+  const LS_NOTICE = 'cd.noticeAck';
+  const NOTICE_DAYS = 3;
+  let noticeData = null;
+
+  function noticeMuted() {
+    const t = parseInt(localStorage.getItem(LS_NOTICE) || '0', 10);
+    return t > 0 && (Date.now() - t) < NOTICE_DAYS * 24 * 60 * 60 * 1000;
+  }
+  function noticeValid(o) {
+    return !!o && typeof o === 'object' && Array.isArray(o.sections) && o.sections.length > 0;
+  }
+  async function loadNotice() {
+    if (noticeValid(noticeData)) return noticeData;
+    try {                                   // 1) 服务器（以后台为准）
+      const r = await API.notice();
+      if (r && noticeValid(r.notice)) { noticeData = r.notice; return noticeData; }
+    } catch (e) {}
+    try {                                   // 2) 本地兜底
+      const r = await fetch('assets/notice.json', { cache: 'no-cache' });
+      if (r.ok) { const o = await r.json(); if (noticeValid(o)) noticeData = o; }
+    } catch (e) {}
+    return noticeData;
+  }
+  function renderNotice(o) {
+    if (!noticeValid(o)) return;
+    if (o.title) $('#noticeTitle').textContent = o.title;
+    if (o.okText) $('#noticeOk').textContent = o.okText;
+    const body = $('#noticeBody');
+    body.textContent = '';
+    if (o.intro) { const p = document.createElement('p'); p.textContent = o.intro; body.appendChild(p); }
+    o.sections.forEach((s) => {
+      if (!s || typeof s !== 'object') return;
+      if (s.heading) { const h = document.createElement('h3'); h.textContent = s.heading; body.appendChild(h); }
+      if (Array.isArray(s.items) && s.items.length) {
+        const ol = document.createElement('ol');
+        s.items.forEach((t) => { const li = document.createElement('li'); li.textContent = String(t); ol.appendChild(li); });
+        body.appendChild(ol);
+      } else if (s.text) {
+        const p = document.createElement('p'); p.textContent = s.text; body.appendChild(p);
+      }
+    });
+  }
+  function openNotice() { $('#noticeModal').hidden = false; }
+  function closeNotice() { $('#noticeModal').hidden = true; }
+  async function maybeShowNotice() {
+    try {
+      renderNotice(await loadNotice());
+      if (!noticeMuted()) openNotice();
+    } catch (e) {}
+  }
+  $('#noticeBtn').addEventListener('click', async () => {
+    closeDrawer();
+    openNotice();
+    renderNotice(await loadNotice());   // 第一次点的时候可能还没拉到
+  });
+  $('#noticeClose').addEventListener('click', closeNotice);
+  $('#noticeModal').addEventListener('click', (e) => { if (e.target === $('#noticeModal')) closeNotice(); });
+  $('#noticeOk').addEventListener('click', () => {
+    try { localStorage.setItem(LS_NOTICE, String(Date.now())); } catch (e) {}
+    closeNotice();
   });
 
   /* ---------------- 启动 ---------------- */

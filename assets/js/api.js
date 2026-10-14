@@ -409,6 +409,10 @@
       await sleep(120);
       if (mockUser) { delete mockAvatars[mockUser.id]; mockUser.hasAvatar = false; }
       return { ok: true, user: mockUser };
+    },
+    /* 公告：演示模式没有服务器，抛错让前端退回本地 assets/notice.json */
+    async notice() {
+      throw new Error('演示模式：公告走本地文件');
     }
   };
 
@@ -526,7 +530,8 @@
     },
     async clearAvatar() {
       return req('/api/avatar/clear', { method: 'POST' });
-    }
+    },
+    async notice() { return req('/api/notice'); }
   };
 
   Object.assign(API, {
@@ -553,7 +558,8 @@
     uploadChunk: (o) => (API.MOCK ? mock : real).uploadChunk(o),
     putThumb: (p, blob) => (API.MOCK ? Promise.resolve({ ok: true }) : real).putThumb(p, blob),
     setAvatar: (blob) => (API.MOCK ? mock : real).setAvatar(blob),
-    clearAvatar: () => (API.MOCK ? mock : real).clearAvatar()
+    clearAvatar: () => (API.MOCK ? mock : real).clearAvatar(),
+    notice: () => (API.MOCK ? mock : real).notice()
   });
 
   /* 预设标签的配色（前后端共用这一套名字） */
