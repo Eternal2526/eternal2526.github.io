@@ -195,6 +195,8 @@ button,input,select{font:inherit;color:inherit}
 .card .meta{padding:9px 10px 10px}
 .card .fname{font-size:13.5px;font-weight:600;line-height:1.35;word-break:break-all;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .fup{margin-top:3px;font-size:11.5px;line-height:1.3;color:var(--ink-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .fsub{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
 /* 卡片上的标签（取代原来的上传者位置） */
 .card .ftags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -214,7 +216,9 @@ button,input,select{font:inherit;color:inherit}
 .row .ricon{width:34px;height:34px;flex:none;border-radius:8px;display:grid;place-items:center;
   background:var(--panel-2);color:var(--ink-3);overflow:hidden}
 .row .ricon img{width:100%;height:100%;object-fit:cover}
-.row .rname{flex:1;min-width:0;font-size:14px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .rname{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.row .rname .rn{font-size:14px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .rname .rup{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .rmeta{font-size:12px;color:var(--ink-3);white-space:nowrap;display:flex;gap:10px;align-items:center}
 .row .racts{display:flex;gap:4px}
 

@@ -810,11 +810,13 @@
         </div>`
       : '';
     const chips = it.isDir ? '' : tagChips(it, 3);
-    // 卡片副信息只放「大小 / 修改时间」+ 标签；上传者不放这里，去「详细信息」里看
+    const up = (!it.isDir && it.uploader) ? String(it.uploader) : '';
+    // 文件名下方一行灰色小字 = 上传者；再往下是「大小 / 修改时间」和标签
     return `<article class="card${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <div class="thumb">${it.isDir ? `<div class="ph">${ICON.folder}<b>文件夹</b></div>` : thumb + badgeKind(it)}</div>
       <div class="meta">
         <div class="fname" title="${esc(it.name)}">${esc(it.name)}</div>
+        ${up ? `<div class="fup" title="${esc(up)}">${esc(up)}</div>` : ''}
         <div class="fsub">
           ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
           <span>·</span><span>${fmtDate(it.mtime)}</span>
@@ -839,6 +841,7 @@
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const chips = it.isDir ? '' : tagChips(it, 3);
+    const up = (!it.isDir && it.uploader) ? String(it.uploader) : '';
     const selCheckbox = state.selMode
       ? `<span class="sel-check${isSelected ? ' is-on' : ''}" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -846,7 +849,10 @@
       : '';
     return `<div class="row${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <span class="ricon">${ico}</span>
-      <span class="rname" title="${esc(it.name)}">${esc(it.name)}</span>
+      <span class="rname" title="${esc(it.name)}">
+        <span class="rn">${esc(it.name)}</span>
+        ${up ? `<span class="rup" title="${esc(up)}">${esc(up)}</span>` : ''}
+      </span>
       <div class="rmeta">
         ${chips ? `<span class="rtags">${chips}</span>` : ''}
         ${it.isDir ? `<span>${it.size || 0} 项</span>` : `<span>${fmtSize(it.size)}</span>`}
