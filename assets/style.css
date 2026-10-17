@@ -1,5 +1,5 @@
 /* ==========================================================
-   班级网盘 · 样式（绿色主题 / 卡片式 / 移动优先 / 无外部依赖）
+   小象云盘 · 样式（绿色主题 / 卡片式 / 移动优先 / 无外部依赖）
    ========================================================== */
 :root{
   --brand:#0f9d58;
@@ -81,6 +81,11 @@ button,input,select{font:inherit;color:inherit}
 .btn-primary:hover{background:var(--brand-ink);border-color:var(--brand-ink)}
 .btn-ghost{border-color:transparent;background:transparent}
 .btn-ghost:hover{background:var(--panel-2);border-color:var(--line)}
+/* 暗色模式下品牌绿/危险红偏亮，按钮文字改用深色保证对比度 */
+:root[data-theme="dark"] .btn-primary{color:#0d1a12}
+:root[data-theme="dark"] .btn-primary:hover{background:var(--brand);filter:brightness(.94);color:#0d1a12}
+:root[data-theme="dark"] .btn-danger{color:#2a0b0b}
+:root[data-theme="dark"] .btn-danger:hover{filter:brightness(.94);color:#2a0b0b}
 .btn-block{width:100%;height:44px}
 .btn-sm{height:32px;padding:0 10px;font-size:13px;border-radius:var(--r-sm)}
 .btn[disabled]{opacity:.55;pointer-events:none}
@@ -124,8 +129,8 @@ button,input,select{font:inherit;color:inherit}
 .link-btn:hover{background:var(--brand-soft)}
 
 /* ---------- 布局 ---------- */
-.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100dvh}
-.sidebar{position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;min-height:100dvh}
+.sidebar{position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;
   background:var(--panel);border-right:1px solid var(--line);padding:14px 12px}
 .side-top{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 14px}
 .brand{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:.2px}
@@ -422,6 +427,17 @@ button,input,select{font:inherit;color:inherit}
   .sel-bar .sel-op{flex:1;padding:0 8px;font-size:12px}
 }
 
+/* ---------- 侧栏留言板入口（点了进大页面） ---------- */
+.board{flex:none;border-top:1px solid var(--line);margin-top:8px;padding-top:6px}
+.board-head{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:0;border-radius:var(--r-sm);
+  background:transparent;color:var(--ink-2);text-align:left;cursor:pointer;transition:.14s background,.14s color}
+.board-head:hover{background:var(--brand-soft);color:var(--brand-ink)}
+.board-ico{flex:none;color:var(--brand);opacity:.92}
+.board-name{flex:1;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-count{font-size:11.5px;color:var(--ink-3);background:var(--panel-2);border-radius:99px;padding:1px 7px;flex:none}
+.board-caret{flex:none;color:var(--ink-3)}
+.board-head:hover .board-caret{color:var(--brand-ink)}
+
 /* ---------- 留言板（独立整页：最近图片 / 视频下面的评论） ---------- */
 .board-screen .settings-head .board-count{margin-left:auto;font-size:12px;color:var(--ink-3)}
 .board-page-body{max-width:720px}
@@ -530,7 +546,7 @@ button,input,select{font:inherit;color:inherit}
   .app{grid-template-columns:1fr}
   .only-mobile{display:inline-flex}
   .only-desktop{display:none}
-  .sidebar{position:fixed;left:0;top:0;bottom:0;width:78vw;max-width:308px;z-index:50;
+  .sidebar{position:fixed;left:0;top:0;bottom:0;height:100vh;height:100dvh;width:78vw;max-width:308px;z-index:50;
     transform:translateX(-102%);transition:transform .26s cubic-bezier(.3,.9,.3,1);box-shadow:var(--sh-2)}
   .sidebar.is-open{transform:none}
   .scrim{position:fixed;inset:0;background:rgba(9,14,11,.42);z-index:45;animation:fade .2s ease}

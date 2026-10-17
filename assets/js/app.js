@@ -1809,15 +1809,34 @@
   });
 
   /* ---------------- 留言板（独立整页：展示的就是最近的图片/视频评论） ---------------- */
+  /* 文件类型小图标：视频 / 文件夹 / 图片（缩略图 404 兜底也用同一套） */
+  const kindIcon = (k, sz) => k === 'video'
+    ? `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>`
+    : (k === 'dir'
+      ? `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" aria-hidden="true"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".85"/></svg>`
+      : `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>`);
+  // 缩略图加载失败（文件没有图 / 404）→ 自动换成类型图标，不留裂图
+  function bindThumbFallback(scope) {
+    $$(`${scope} img[data-kind]`).forEach((img) => {
+      if (img.dataset.fb) return;
+      img.dataset.fb = '1';
+      img.addEventListener('error', () => {
+        const ph = document.createElement('span');
+        ph.className = img.classList.contains('req-pop-thumb') ? 'req-pop-thumb is-ph' : img.className + ' ph';
+        ph.innerHTML = kindIcon(img.dataset.kind, img.classList.contains('req-pop-thumb') ? 26 : 12);
+        img.replaceWith(ph);
+      });
+    });
+  }
   let boardMsgs = [], boardCanEdit = false;
   function boardItemHTML(m) {
     const mine = !!(state.user && String(state.user.id) === String(m.uid));
     const del = (mine || boardCanEdit)
       ? `<button class="board-del" data-del="${m.id}" title="删除" aria-label="删除">×</button>` : '';
-    const ico = m.kind === 'video'
-      ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>';
-    const preview = m.thumb ? `<img class="board-thumb" src="${esc(m.thumb)}" alt="" loading="lazy">` : `<div class="board-thumb ph">${ico}</div>`;
+    const ico = kindIcon(m.kind, 12);
+    const preview = m.thumb
+      ? `<img class="board-thumb" src="${esc(m.thumb)}" alt="" loading="lazy" data-kind="${esc(m.kind || 'image')}">`
+      : `<div class="board-thumb ph">${ico}</div>`;
     return `<li class="board-item">
       ${avatarHTML(m.name, m.uid, m.hasAvatar, 'board-av')}
       <div class="board-main">
@@ -1831,6 +1850,7 @@
     $('#boardCount').textContent = boardMsgs.length ? boardMsgs.length + ' 条' : '';
     if (!boardMsgs.length) { list.innerHTML = '<li class="board-empty">还没有评论 —— 打开一张图片就能评论</li>'; return; }
     list.innerHTML = boardMsgs.map(boardItemHTML).join('');
+    bindThumbFallback('#boardList');
   }
   async function loadBoard() {
     const list = $('#boardList');
@@ -1881,13 +1901,9 @@
   let reqItems = [];
   const REQ_POLL_MS = 60000;
   function reqItemHTML(r) {
-    const ico = r.kind === 'video'
-      ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
-      : (r.kind === 'dir'
-        ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".85"/></svg>'
-        : '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>');
+    const ico = kindIcon(r.kind, 12);
     const preview = r.thumb
-      ? `<img class="req-thumb" src="${esc(r.thumb)}" alt="" loading="lazy">`
+      ? `<img class="req-thumb" src="${esc(r.thumb)}" alt="" loading="lazy" data-kind="${esc(r.kind || 'image')}">`
       : `<span class="req-thumb ph">${ico}</span>`;
     return `<li class="req-item">
       ${avatarHTML(r.askerName, r.asker, r.hasAvatar, 'req-av')}
@@ -1908,6 +1924,7 @@
     box.hidden = !reqItems.length;
     $('#reqsCount').textContent = reqItems.length ? reqItems.length : '';
     list.innerHTML = reqItems.map(reqItemHTML).join('');
+    bindThumbFallback('#reqsList');
   }
   async function loadRequests() {
     try {
@@ -1926,11 +1943,6 @@
   /* ---------- 删除请求弹窗（决定者一上线 / 有新请求时弹出；同意 / 拒绝 / 稍后处理） ---------- */
   const reqNotified = new Set();        // 已弹过提醒的请求 id，不再重复打扰
   let reqWorking = false;               // 弹窗请求处理中（防连点）
-  const reqKindIcon = (k) => k === 'video'
-    ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
-    : (k === 'dir'
-      ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".85"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>');
   function showNextReq() {
     const modal = $('#reqModal');
     const next = reqItems.find((x) => !reqNotified.has(String(x.id)));
@@ -1941,8 +1953,11 @@
     $('#reqPopSub').textContent = `${next.askerName} 想删除${next.kind === 'dir' ? '文件夹' : '文件'} · ${fmtWhen(next.created)}`;
     const th = $('#reqPopThumb');
     th.classList.toggle('is-ph', !next.thumb);
-    th.innerHTML = next.thumb ? `<img src="${esc(next.thumb)}" alt="" loading="lazy">` : reqKindIcon(next.kind);
+    th.innerHTML = next.thumb
+      ? `<img class="req-pop-thumb" src="${esc(next.thumb)}" alt="" loading="lazy" data-kind="${esc(next.kind || 'image')}">`
+      : kindIcon(next.kind, 26);
     modal.hidden = false;
+    bindThumbFallback('#reqPopThumb');
   }
   // 「同意 / 拒绝」真的提交；处理完自动接着弹下一条
   async function reqPopupDecide(id, ok) {
