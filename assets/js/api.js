@@ -36,6 +36,15 @@
    GET  /api/list?path=&tag=<id>&group=<id>            ← 按标签 / 按分类筛选（只回带该标签/该分类的文件的）
    GET  /api/search?q=&scope=&tag=<id>&group=<id>      ← 同上；q 也能命中标签名
 
+   —— 评论（图片 / 视频）与留言板 ——
+   GET  /api/comments?path=/照片/a.jpg                 → {path, comments:[Note], canEdit}
+   POST /api/comment        {path,text}                ← 发一条评论（最多 500 字）→ {ok,comment:Note}
+   POST /api/comment/delete {id}                       ← 删自己的评论（管理员能删任何一条）
+   GET  /api/board                                     → {messages:[Note+path/file/kind], canEdit}
+                                                          ← 侧栏「留言板」= 最近 200 条图片/视频评论，
+                                                            按时间正序；没有单独的留言数据，发评论就来这里
+   Note = {id,uid,name,hasAvatar,text,created}         ← created 是毫秒时间戳；头像用 /api/avatar?id=uid 取
+
    —— 头像（每人一张，前端压成 256 宽 JPEG 后上传）——
    POST /api/avatar         (body=image/jpeg)          ← 设置自己的头像 → {ok,user}
    POST /api/avatar/clear                              ← 移除自己的头像 → {ok,user}
@@ -177,6 +186,32 @@
     : { ...f, tags: tagsOfPath(f.path), uploaderAvatar: !!mockAvatars[f.uploaderId] });
   const isTagKind = (kind) => kind === 'image' || kind === 'video';
 
+  /* ---------- 演示模式的评论 / 留言板（结构跟真后端一致：头像 + 名字 + 时间）---------- */
+  let NOTE_SEQ = 1;
+  const mkNote = (uid, name, text, ago) => ({
+    id: NOTE_SEQ++, uid, name, text, created: Date.now() - (ago || 0)
+  });
+  const pubNote = (n) => ({ ...n, name: n.name || '同学', hasAvatar: !!mockAvatars[n.uid] });
+  let MOCK_CMTS = {                        // path -> [comment]（老的在前）
+    '/照片/运动会合影.jpg': [
+      mkNote('u2', '陈小雨', '这张拍得真好看！', 3 * 3600e3),
+      mkNote('u3', '王浩', '下次拍照记得叫上我', 2 * 3600e3)
+    ],
+    '/照片/元旦晚会1.jpg': [
+      mkNote('u1', '林小满', '舞台灯光效果不错', 26 * 3600e3)
+    ]
+  };
+  /* 演示模式下，评论跟着文件一起移动 / 改名 / 删除 */
+  const cmtHit = (p, base) => p === base || p.indexOf(base + '/') === 0;
+  const cmtMove = (old, np) => {
+    const nx = {};
+    for (const p of Object.keys(MOCK_CMTS)) nx[cmtHit(p, old) ? np + p.slice(old.length) : p] = MOCK_CMTS[p];
+    MOCK_CMTS = nx;
+  };
+  const cmtKill = (base) => {
+    Object.keys(MOCK_CMTS).forEach((p) => { if (cmtHit(p, base)) delete MOCK_CMTS[p]; });
+  };
+
   const mock = {
     async login(username, password) {
       await sleep(420);
@@ -243,6 +278,7 @@
           f.parent = f.path.replace(/\/[^/]*$/, '') || '/';
         });
         moved.push({ from: old, to: np });
+        cmtMove(old, np);
       }
       return { ok: true, moved };
     },
@@ -255,6 +291,7 @@
       const old = it.path;
       it.name = name; it.path = np;
       files.filter((f) => f.path.indexOf(old + '/') === 0).forEach((f) => { f.path = np + f.path.slice(old.length); });
+      cmtMove(old, np);
       return { ok: true, from: old, to: np, item: it };
     },
     async tags() {
@@ -367,6 +404,7 @@
           delete fileTags[f.path];
           const i = files.indexOf(f); if (i >= 0) files.splice(i, 1);
         });
+        cmtKill(p);
         kill(p);
       }
       return { ok: true, removed: mine.length };
@@ -416,6 +454,42 @@
     /* 公告：演示模式没有服务器，抛错让前端退回本地 assets/notice.json */
     async notice() {
       throw new Error('演示模式：公告走本地文件');
+    },
+
+    /* ---------- 评论（图片 / 视频）/ 留言板 ---------- */
+    async comments(path) {
+      await sleep(140);
+      return { path, comments: (MOCK_CMTS[path] || []).map(pubNote),
+               canEdit: mockUser?.role === 'admin' };
+    },
+    async commentAdd(path, text) {
+      await sleep(180);
+      if (!String(text || '').trim()) throw new Error('内容不能为空');
+      const n = mkNote(mockUser?.id || 'u9', mockUser?.name || '同学', String(text).trim().slice(0, 500), 0);
+      (MOCK_CMTS[path] = MOCK_CMTS[path] || []).push(n);
+      return { ok: true, comment: pubNote(n) };
+    },
+    async commentDel(id) {
+      await sleep(140);
+      for (const p of Object.keys(MOCK_CMTS)) {
+        const i = MOCK_CMTS[p].findIndex((x) => x.id === Number(id));
+        if (i >= 0) { MOCK_CMTS[p].splice(i, 1); break; }
+      }
+      return { ok: true, id: Number(id) };
+    },
+    /* 留言板：就是把各个图片/视频下面的评论按时间摞在一起（新的在最后） */
+    async board() {
+      await sleep(160);
+      const out = [];
+      for (const p of Object.keys(MOCK_CMTS)) {
+        const f = files.find((x) => x.path === p);
+        if (!f) continue;                          // 文件删了就不显示了
+        for (const n of MOCK_CMTS[p]) {
+          out.push(Object.assign(pubNote(n), { path: p, file: f.name, kind: f.kind, thumb: f.thumb }));
+        }
+      }
+      out.sort((a, b) => a.created - b.created);
+      return { messages: out, canEdit: mockUser?.role === 'admin' };
     }
   };
 
@@ -535,7 +609,17 @@
     async clearAvatar() {
       return req('/api/avatar/clear', { method: 'POST' });
     },
-    async notice() { return req('/api/notice'); }
+    async notice() { return req('/api/notice'); },
+    async comments(path) { return req('/api/comments?path=' + encodeURIComponent(path)); },
+    async commentAdd(path, text) {
+      return req('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, text }) });
+    },
+    async commentDel(id) {
+      return req('/api/comment/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }) });
+    },
+    async board() { return req('/api/board'); }
   };
 
   Object.assign(API, {
@@ -563,13 +647,18 @@
     putThumb: (p, blob) => (API.MOCK ? Promise.resolve({ ok: true }) : real).putThumb(p, blob),
     setAvatar: (blob) => (API.MOCK ? mock : real).setAvatar(blob),
     clearAvatar: () => (API.MOCK ? mock : real).clearAvatar(),
-    notice: () => (API.MOCK ? mock : real).notice()
+    notice: () => (API.MOCK ? mock : real).notice(),
+    comments: (p) => (API.MOCK ? mock : real).comments(p),
+    commentAdd: (p, t) => (API.MOCK ? mock : real).commentAdd(p, t),
+    commentDel: (id) => (API.MOCK ? mock : real).commentDel(id),
+    board: () => (API.MOCK ? mock : real).board()
   });
 
   /* 预设标签的配色（前后端共用这一套名字） */
   API.TAG_COLORS = ['green', 'blue', 'purple', 'orange', 'red', 'teal'];
   API.TAG_COLOR_CN = { green: '绿', blue: '蓝', purple: '紫', orange: '橙', red: '红', teal: '青' };
   API.canTag = (item) => !!item && (item.kind === 'image' || item.kind === 'video');
+  API.canComment = (item) => !!item && !item.isDir && (item.kind === 'image' || item.kind === 'video');
 
   /* 缩略图 / 直链地址（真实模式走后端，mock 模式返回本地地址） */
   API.diskInfo = function () {

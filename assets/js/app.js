@@ -61,6 +61,23 @@
     s = Math.round(s);
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
+  /* 评论 / 留言的时间：刚刚 / N 分钟前 / N 小时前 / N 天前，再久就报日期 */
+  function fmtWhen(ms) {
+    if (!ms) return '';
+    const d = Date.now() - ms;
+    if (d < 60e3) return '刚刚';
+    if (d < 3600e3) return Math.floor(d / 60e3) + ' 分钟前';
+    if (d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
+    if (d < 7 * 86400e3) return Math.floor(d / 86400e3) + ' 天前';
+    return fmtDate(ms);
+  }
+  /* 小头像：有头像用图，没有就用名字里的一两个字（跟侧栏头像一个写法） */
+  function avatarHTML(name, uid, hasAvatar, cls) {
+    const src = hasAvatar ? API.avatarUrl(uid) : null;
+    if (src) return `<img class="${cls}" src="${esc(src)}" alt="">`;
+    const n = String(name || '?');
+    return `<span class="${cls} av-txt" aria-hidden="true">${esc(n.slice(-2, -1) || n[0] || '?')}</span>`;
+  }
   let toastTimer;
   function toast(msg, ms) {
     const t = $('#toast');
@@ -198,6 +215,8 @@
     syncAvatarUI();
     load(state.folder);
     loadTree();
+    applyBoardOpen();
+    loadBoard();
     maybeShowNotice();
   }
 
@@ -1584,6 +1603,16 @@
     const vt = $('#viewerTag');
     vt.hidden = !API.canTag(it);
     vt.onclick = () => openTagMenu(it, vt);
+    // 评论：图片 / 视频才有
+    const vc = $('#viewerComment');
+    vc.hidden = !API.canComment(it);
+    if (vc.hidden) {
+      vcmPanel().hidden = true;
+      vcmItem = null; vcmMsgs = [];
+      $('#viewerCmtN').textContent = '';
+    } else {
+      loadComments(it);
+    }
     const url = API.rawUrl(it);
     const dl = $('#viewerDl');
     dl.href = url === '#' ? 'javascript:void 0' : API.rawUrl(it, true);
@@ -1606,7 +1635,15 @@
     }
     v.hidden = false;
   }
-  $('#viewerClose').addEventListener('click', () => { $('#viewer').hidden = true; $('#viewerBody').innerHTML = ''; closeTagMenu(); });
+  function closeViewer() {
+    $('#viewer').hidden = true;
+    $('#viewerBody').innerHTML = '';
+    closeTagMenu();
+    $('#viewerComments').hidden = true;
+    $('#viewerCmtN').textContent = '';
+    vcmItem = null; vcmMsgs = [];
+  }
+  $('#viewerClose').addEventListener('click', closeViewer);
   $('#viewerPrev').addEventListener('click', () => viewerStep(-1));
   $('#viewerNext').addEventListener('click', () => viewerStep(1));
 
@@ -1629,6 +1666,146 @@
     }, { passive: true });
   })();
 
+  /* ---------------- 预览里的评论（图片 / 视频）---------------- */
+  let vcmItem = null, vcmMsgs = [], vcmCanEdit = false;
+  const vcmPanel = () => $('#viewerComments');
+
+  function commentItemHTML(c) {
+    const mine = !!(state.user && state.user.id === c.uid);
+    const del = (mine || vcmCanEdit)
+      ? `<button class="vcm-del" data-del="${c.id}" title="删除" aria-label="删除">×</button>` : '';
+    return `<li class="vcm-item">
+      ${avatarHTML(c.name, c.uid, c.hasAvatar, 'vcm-av')}
+      <div class="vcm-main">
+        <div class="vcm-top"><b>${esc(c.name)}</b><time>${esc(fmtWhen(c.created))}</time></div>
+        <div class="vcm-text">${esc(c.text).replace(/\n/g, '<br>')}</div>
+      </div>${del}</li>`;
+  }
+  function renderComments() {
+    const list = $('#vcmList');
+    $('#vcmCount').textContent = vcmMsgs.length ? vcmMsgs.length : '';
+    $('#viewerCmtN').textContent = vcmMsgs.length ? ' ' + vcmMsgs.length : '';
+    if (!vcmMsgs.length) { list.innerHTML = '<li class="vcm-empty">还没有评论，来说一句吧</li>'; return; }
+    list.innerHTML = vcmMsgs.map(commentItemHTML).join('');
+    list.scrollTop = list.scrollHeight;
+  }
+  async function loadComments(it) {
+    vcmItem = it;
+    $('#vcmList').innerHTML = '<li class="vcm-empty">加载中…</li>';
+    try {
+      const r = await API.comments(it.path);
+      if (vcmItem !== it) return;                 // 已经切到别的文件了
+      vcmMsgs = r.comments || [];
+      vcmCanEdit = !!r.canEdit;
+      renderComments();
+    } catch (e) {
+      $('#vcmList').innerHTML = `<li class="vcm-empty">评论加载失败：${esc(e.message)}</li>`;
+    }
+  }
+  $('#viewerComment').addEventListener('click', () => {
+    const p = vcmPanel();
+    p.hidden = !p.hidden;
+    if (!p.hidden) $('#vcmInput').focus();
+  });
+  $('#viewerCmtClose').addEventListener('click', () => { vcmPanel().hidden = true; });
+  $('#vcmForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const inp = $('#vcmInput'), btn = $('#vcmSend');
+    const text = inp.value.trim();
+    if (!text || !vcmItem) return;
+    btn.disabled = true;
+    try {
+      const r = await API.commentAdd(vcmItem.path, text);
+      inp.value = '';
+      vcmMsgs.push(r.comment);
+      renderComments();
+      loadBoard();                              // 侧栏留言板同步刷新（它就是最近的评论）
+    } catch (ex) { toast(ex.message, 3200); }
+    finally { btn.disabled = false; inp.focus(); }
+  });
+  $('#vcmList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-del]');
+    if (!b) return;
+    if (!await uiConfirm({ title: '删除评论', text: '确定删掉这条评论吗？', okText: '删除' })) return;
+    try {
+      await API.commentDel(b.dataset.del);
+      vcmMsgs = vcmMsgs.filter((x) => String(x.id) !== String(b.dataset.del));
+      renderComments();
+      loadBoard();                              // 留言板里的那条也一起去掉
+    } catch (ex) { toast(ex.message, 3200); }
+  });
+
+  /* ---------------- 留言板（挂在左侧栏）---------------- */
+  let boardMsgs = [], boardCanEdit = false, boardLoadedOnce = false;
+  const LS_BOARD = 'cd.boardopen';
+  function applyBoardOpen() {
+    const open = localStorage.getItem(LS_BOARD) !== '0';
+    $('#boardBody').hidden = !open;
+    $('#boardHead').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function boardItemHTML(m) {
+    const mine = !!(state.user && state.user.id === m.uid);
+    const del = (mine || boardCanEdit)
+      ? `<button class="board-del" data-del="${m.id}" title="删除" aria-label="删除">×</button>` : '';
+    const ico = m.kind === 'video'
+      ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>';
+    return `<li class="board-item">
+      ${avatarHTML(m.name, m.uid, m.hasAvatar, 'board-av')}
+      <div class="board-main">
+        <div class="board-top"><b>${esc(m.name)}</b><time>${esc(fmtWhen(m.created))}</time></div>
+        <div class="board-text">${esc(m.text).replace(/\n/g, '<br>')}</div>
+        <button class="board-img" data-open="${esc(m.path)}" title="打开 ${esc(m.file)}">${ico}<span class="board-img-n">${esc(m.file)}</span></button>
+      </div>${del}</li>`;
+  }
+  function renderBoard() {
+    const list = $('#boardList');
+    $('#boardCount').textContent = boardMsgs.length ? boardMsgs.length : '';
+    if (!boardMsgs.length) { list.innerHTML = '<li class="board-empty">还没有评论 —— 打开一张图片就能评论</li>'; return; }
+    list.innerHTML = boardMsgs.map(boardItemHTML).join('');
+    list.scrollTop = list.scrollHeight;
+  }
+  async function loadBoard() {
+    if (!boardLoadedOnce) $('#boardList').innerHTML = '<li class="board-empty">加载中…</li>';
+    try {
+      const r = await API.board();
+      boardMsgs = r.messages || [];
+      boardCanEdit = !!r.canEdit;
+      boardLoadedOnce = true;
+      renderBoard();
+    } catch (e) {
+      $('#boardList').innerHTML = `<li class="board-empty">评论加载失败：${esc(e.message)}</li>`;
+    }
+  }
+  $('#boardHead').addEventListener('click', () => {
+    const willOpen = $('#boardBody').hidden;
+    localStorage.setItem(LS_BOARD, willOpen ? '1' : '0');
+    applyBoardOpen();
+  });
+  /* 留言板里的条目就是图片/视频下面的评论：点名字打开那张图，× 删自己那条 */
+  function openBoardItem(path) {
+    const m = boardMsgs.find((x) => x.path === path);
+    if (!m) return;
+    // 当前目录里能找到就用现成的那条（有缩略图/标签），找不到就现造一个最小对象
+    const pool = (state.items && state.items.length) ? state.items : state.allItems;
+    const found = (pool || []).find((x) => x.path === path);
+    closeDrawer();
+    openViewer(found || { path: m.path, name: m.file, kind: m.kind || 'image', isDir: false, tags: [], thumb: m.thumb });
+  }
+  $('#boardList').addEventListener('click', async (e) => {
+    const op = e.target.closest('[data-open]');
+    if (op) { openBoardItem(op.dataset.open); return; }
+    const b = e.target.closest('[data-del]');
+    if (!b) return;
+    if (!await uiConfirm({ title: '删除评论', text: '确定删掉这条评论吗？', okText: '删除' })) return;
+    try {
+      await API.commentDel(b.dataset.del);
+      boardMsgs = boardMsgs.filter((x) => String(x.id) !== String(b.dataset.del));
+      renderBoard();
+      if (vcmItem) loadComments(vcmItem);        // 评论抽屉开着的话，一起去掉
+    } catch (ex) { toast(ex.message, 3200); }
+  });
+
   document.addEventListener('keydown', (e) => {
     if (!$('#viewer').hidden && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       viewerStep(e.key === 'ArrowRight' ? 1 : -1);
@@ -1636,6 +1813,7 @@
     }
     if (e.key === 'Escape') {
       $('#viewer').hidden = true; $('#viewerBody').innerHTML = '';
+      $('#viewerComments').hidden = true; $('#viewerCmtN').textContent = '';
       closeDrawer(); closeTagMenu(); closeTagModal(); closeCtx();
       $('#infoModal').hidden = true; $('#moveModal').hidden = true;
       $('#settingsScreen').hidden = true;
