@@ -407,7 +407,7 @@
     }
     state.items = items;
     $('#crumbs').innerHTML = `<button data-go="/">全部文件</button><span class="sep">/</span><span class="cur">${esc(label)}</span>`;
-    $('#crumbs').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => load(b.dataset.go)));
+    $('#crumbs').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
     render(); loadTree(); closeDrawer();
   }
 
@@ -1184,7 +1184,7 @@
       html += `<span class="sep">/</span><button data-go="${esc(acc)}" class="${i === parts.length - 1 ? 'cur' : ''}">${esc(p)}</button>`;
     });
     $('#crumbs').innerHTML = html;
-    $('#crumbs').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => load(b.dataset.go)));
+    $('#crumbs').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
     load(path);
   }
 

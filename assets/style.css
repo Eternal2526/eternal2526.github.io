@@ -130,7 +130,7 @@ button,input,select{font:inherit;color:inherit}
 .link-btn:hover{background:var(--brand-soft)}
 
 /* ---------- 布局 ---------- */
-.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;min-height:100dvh}
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;min-height:100dvh;background:var(--panel)}
 .sidebar{position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;
   background:var(--panel);border-right:1px solid var(--line);padding:14px 12px}
 .side-top{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 14px}
@@ -159,8 +159,9 @@ button,input,select{font:inherit;color:inherit}
 .user-meta small{color:var(--ink-3);font-size:11.5px}
 
 /* ---------- 主区 ---------- */
-.main{min-width:0;display:flex;flex-direction:column;padding:14px 18px 26px}
-.topbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.main{min-width:0;display:flex;flex-direction:column;padding:14px 18px 26px;background:var(--bg)}
+.top-sticky{position:sticky;top:0;z-index:12;background:var(--bg);border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}
+.topbar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .search{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;
   background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--r-md);
   transition:.16s border-color,.16s box-shadow;color:var(--ink-3)}
@@ -626,14 +627,16 @@ button,input,select{font:inherit;color:inherit}
 @media (max-width:560px){
   .search-fields .sf{padding:0 7px;font-size:11.5px}
   .viewer-head .v-pos{margin-left:6px}
-  /* 手机竖屏（16:9 / 16:10 窄屏）针对性布局：顶部与工具栏分行，不再互相挤 */
-  .topbar{flex-wrap:wrap;gap:8px}
+  .topbar{flex-wrap:wrap;gap:8px;margin-bottom:8px}
   .topbar .search{flex:1;min-width:0;order:1}
-  .top-actions{order:2;flex-basis:100%;justify-content:flex-end}
-  .top-actions .btn{width:40px;padding:0}
+  .top-actions{order:1;flex:none;margin-left:auto}
+  .top-actions .btn{width:40px;height:40px;padding:0;min-width:0;gap:0}
+  .crumbs{margin-bottom:8px}
+  .toolbar{margin-bottom:8px}
   .toolbar .count{flex-basis:100%}
   .files.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .main{padding:10px 10px 22px}
+  .top-sticky{padding-bottom:8px}
 }
 
 /* ---------- 登录页须知（只在初始登录页显示） ---------- */
