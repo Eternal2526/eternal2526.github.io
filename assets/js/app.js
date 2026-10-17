@@ -237,7 +237,9 @@
       if (state.user.mustChange) return askNewPassword(pass);   // 首登：改完密码才放行
       showApp();
     } catch (ex) {
-      err.textContent = ex.message;
+      var msg = ex.message;
+      if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) msg += '（你的网络不支持 IPv6，请更换网络或使用流量）';
+      err.textContent = msg;
       err.hidden = false;
     } finally {
       btn.disabled = false; btn.textContent = regMode ? '注册并进入' : '进入';
