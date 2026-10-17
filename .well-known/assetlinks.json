@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ljzx.xxb.classdisk",
+      "sha256_cert_fingerprints": [
+        "1F:78:31:DA:06:0B:5F:1C:5E:4E:4B:27:2A:E6:7E:9D:BB:20:E0:1A:1A:40:5D:DD:3E:18:30:4E:84:80:DF:F3"
+      ]
+    }
+  }
+]
