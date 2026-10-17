@@ -1835,7 +1835,7 @@
       ? `<button class="board-del" data-del="${m.id}" title="删除" aria-label="删除">×</button>` : '';
     const ico = kindIcon(m.kind, 12);
     const preview = m.thumb
-      ? `<img class="board-thumb" src="${esc(m.thumb)}" alt="" loading="lazy" data-kind="${esc(m.kind || 'image')}">`
+      ? `<img class="board-thumb" src="${esc(API.thumbUrl(m, 480))}" alt="" loading="lazy" data-kind="${esc(m.kind || 'image')}">`
       : `<div class="board-thumb ph">${ico}</div>`;
     return `<li class="board-item">
       ${avatarHTML(m.name, m.uid, m.hasAvatar, 'board-av')}
@@ -1903,7 +1903,7 @@
   function reqItemHTML(r) {
     const ico = kindIcon(r.kind, 12);
     const preview = r.thumb
-      ? `<img class="req-thumb" src="${esc(r.thumb)}" alt="" loading="lazy" data-kind="${esc(r.kind || 'image')}">`
+      ? `<img class="req-thumb" src="${esc(API.thumbUrl(r, 200))}" alt="" loading="lazy" data-kind="${esc(r.kind || 'image')}">`
       : `<span class="req-thumb ph">${ico}</span>`;
     return `<li class="req-item">
       ${avatarHTML(r.askerName, r.asker, r.hasAvatar, 'req-av')}
@@ -1954,7 +1954,7 @@
     const th = $('#reqPopThumb');
     th.classList.toggle('is-ph', !next.thumb);
     th.innerHTML = next.thumb
-      ? `<img class="req-pop-thumb" src="${esc(next.thumb)}" alt="" loading="lazy" data-kind="${esc(next.kind || 'image')}">`
+      ? `<img class="req-pop-thumb" src="${esc(API.thumbUrl(next, 480))}" alt="" loading="lazy" data-kind="${esc(next.kind || 'image')}">`
       : kindIcon(next.kind, 26);
     modal.hidden = false;
     bindThumbFallback('#reqPopThumb');
