@@ -130,17 +130,24 @@ window.CD_FONTS = {
       <!-- JS 渲染 -->
     </nav>
 
-    <!-- 留言板（左侧栏底部，可折叠）：展示的就是最近在图片/视频下面的评论 -->
+    <!-- 留言板：点了直接进大页面 -->
     <section class="board" id="board">
-      <button class="board-head" id="boardHead" type="button" aria-expanded="true">
+      <button class="board-head" id="boardHead" type="button">
         <svg class="board-ico" viewBox="0 0 24 24" width="16" height="16"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4.6 3.4a.7.7 0 0 1-1.1-.6V16h-.2A2.5 2.5 0 0 1 4 13.5v-7Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <span class="board-name">留言板</span>
         <span class="board-count" id="boardCount"></span>
         <svg class="board-caret" viewBox="0 0 24 24" width="14" height="14"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <div class="board-body" id="boardBody">
-        <ul class="board-list" id="boardList"><li class="board-empty">还没有评论 —— 打开一张图片就能评论</li></ul>
+    </section>
+
+    <!-- 删除请求：按需显示，主要靠弹窗即时提醒 -->
+    <section class="reqs" id="reqs" hidden>
+      <div class="reqs-head">
+        <svg class="reqs-ico" viewBox="0 0 24 24" width="16" height="16"><path d="M12 3.6 3.6 20h16.8L12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4.4M12 17.3v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+        <span class="reqs-name">删除请求</span>
+        <span class="reqs-count" id="reqsCount"></span>
       </div>
+      <ul class="reqs-list" id="reqsList"></ul>
     </section>
 
     <div class="side-bottom">
@@ -204,9 +211,8 @@ window.CD_FONTS = {
         </button>
       </div>
       <button class="btn" id="selBtn" title="选择">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M11 3C6.48 3 3 6.48 3 11s3.48 8 8 8 8-3.48 8-8-3.48-8-8-8zm0 2c1.1 0 2 .9 2 2v2h2v-2c0-1.1-.9-2-2-2h-2v-2h2c1.1 0 2 .9 2 2v2h2v-2c0-1.1-.9-2-2-2h-2v2zm6-4c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-4.9 5.05l1.48 1.48L15 11.69l-2.42 2.42z" fill="currentColor"/></svg>
-        <span class="only-desktop">选择</span>
-      </button>
+              <span>选择</span>
+            </button>
       <label class="sort">
         <span class="only-desktop">排序</span>
         <select id="sortSel">
@@ -345,6 +351,21 @@ window.CD_FONTS = {
       <button class="btn" id="moveCancel">取消</button>
       <button class="btn btn-primary" id="moveOk" disabled>移到这个文件夹</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ 留言板（独立页面：最近图片 / 视频下面的评论） ============ -->
+<div id="boardScreen" class="settings-screen board-screen" hidden>
+  <div class="settings-head">
+    <button class="icon-btn" id="boardBack" aria-label="返回">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <b>留言板</b>
+    <span class="board-count" id="boardCount"></span>
+  </div>
+  <div class="settings-body board-page-body">
+    <p class="board-hint">最近大家在图片 / 视频下面留的评论 —— 点文件名能跳到那张图</p>
+    <ul class="board-list" id="boardList"><li class="board-empty">加载中…</li></ul>
   </div>
 </div>
 
@@ -488,6 +509,30 @@ window.CD_FONTS = {
     <div class="notice-body" id="noticeBody"></div>
     <div class="modal-foot">
       <button class="btn btn-primary" id="noticeOk" type="button">已了解（三天内不再展示）</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 删除请求弹窗（上线 / 新请求时即时提醒：同意 · 拒绝 · 稍后处理） ============ -->
+<div id="reqModal" class="modal" hidden>
+  <div class="modal-card req-modal" role="dialog" aria-modal="true" aria-labelledby="reqTitle">
+    <div class="modal-head">
+      <b id="reqTitle">删除请求</b>
+      <button class="icon-btn" id="reqClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="req-pop">
+      <div class="req-pop-thumb" id="reqPopThumb" aria-hidden="true"></div>
+      <div class="req-pop-info">
+        <div class="req-pop-file" id="reqPopFile"></div>
+        <div class="req-pop-sub" id="reqPopSub"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="reqLater" type="button">稍后处理</button>
+      <button class="btn" id="reqReject" type="button">拒绝</button>
+      <button class="btn btn-danger" id="reqApprove" type="button">同意删除</button>
     </div>
   </div>
 </div>

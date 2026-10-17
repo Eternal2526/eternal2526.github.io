@@ -215,8 +215,8 @@
     syncAvatarUI();
     load(state.folder);
     loadTree();
-    applyBoardOpen();
-    loadBoard();
+    loadRequests();
+    startReqPoll();
     maybeShowNotice();
   }
 
@@ -794,6 +794,7 @@
       const bar = document.createElement('div');
       bar.className = 'sel-bar';
       bar.innerHTML = `<span class="sel-count">已选 ${selCount} 项</span>
+        <button class="btn btn-sm sel-op" data-act="all">全选</button>
         <button class="btn btn-sm sel-op" data-act="tag"${selCount ? '' : ' disabled'}>批量加标签</button>
         <button class="btn btn-sm sel-op" data-act="move"${selCount ? '' : ' disabled'}>移动到…</button>
         <button class="btn btn-sm sel-op" data-act="cancel">取消</button>`;
@@ -801,7 +802,8 @@
       bar.addEventListener('click', (e) => {
         if (e.target.disabled) return;
         const act = e.target.dataset.act;
-        if (act === 'tag') openBatchTag();
+        if (act === 'all') toggleSelectAll();
+        else if (act === 'tag') openBatchTag();
         else if (act === 'move') openBatchMove();
         else if (act === 'cancel') clearSelection();
       });
@@ -820,7 +822,7 @@
     const thumb = (isImg && t)
       ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async">`
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
-    const mine = it.uploader === state.user.name;
+    const mine = isMine(it);
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const selCheckbox = state.selMode
@@ -846,7 +848,7 @@
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
         ${it.isDir ? '' : `<button class="icon-btn" data-act="dl" title="下载">${ICON.dl}</button>`}
         <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
-        ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
+        <button class="icon-btn danger" data-act="del" title="${canDel ? '删除' : '请求删除（要上传者或管理员同意）'}">${ICON.del}</button>
       </div>
       ${selCheckbox}
     </article>`;
@@ -856,7 +858,7 @@
     const t = API.thumbUrl(it, 120);
     const isImg = it.kind === 'image' || it.kind === 'video';
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
-    const mine = it.uploader === state.user.name;
+    const mine = isMine(it);
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const chips = it.isDir ? '' : tagChips(it, 3);
@@ -881,7 +883,7 @@
         ${API.canTag(it) ? `<button class="icon-btn" data-act="tag" title="标签">${ICON.tag}</button>` : ''}
         ${it.isDir ? '' : `<button class="icon-btn" data-act="dl" title="下载">${ICON.dl}</button>`}
         <button class="icon-btn" data-act="more" title="详细信息 / 移动">${ICON.info}</button>
-        ${canDel ? `<button class="icon-btn danger" data-act="del" title="删除">${ICON.del}</button>` : ''}
+        <button class="icon-btn danger" data-act="del" title="${canDel ? '删除' : '请求删除（要上传者或管理员同意）'}">${ICON.del}</button>
       </span>
       ${selCheckbox}
     </div>`;
@@ -967,11 +969,39 @@
     syncSelBar();
   }
 
+  // 当前列表里可选的项（管理员全部，普通用户仅自己上传的）
+  const selectableItems = () => state.items.filter((i) => state.user.role === 'admin' || isMine(i));
+
+  // 全选 / 取消全选（已全选时再次点击则是取消全选）
+  function toggleSelectAll() {
+    const sel = selectableItems();
+    if (!sel.length) return;
+    const allOn = sel.every((i) => state.selected.has(i.path));
+    sel.forEach((i) => allOn ? state.selected.delete(i.path) : state.selected.add(i.path));
+    // 同步 DOM 勾选状态（不整页重绘）
+    sel.forEach((i) => {
+      const el = document.querySelector(`.card[data-path="${CSS.escape(i.path)}"], .row[data-path="${CSS.escape(i.path)}"]`);
+      if (el) {
+        const isOn = state.selected.has(i.path);
+        el.classList.toggle('is-sel', isOn);
+        const check = el.querySelector('.sel-check');
+        if (check) check.classList.toggle('is-on', isOn);
+      }
+    });
+    syncSelBar();
+  }
+
   // 更新浮动栏计数 / 按钮可用状态（不整页重绘，手感更顺）
   function syncSelBar() {
     const n = state.selected.size;
     const countEl = document.querySelector('.sel-count');
     if (countEl) countEl.textContent = `已选 ${n} 项`;
+    const sel = selectableItems();
+    const allBtn = document.querySelector('.sel-bar .sel-op[data-act="all"]');
+    if (allBtn) {
+      allBtn.disabled = sel.length === 0;
+      allBtn.textContent = (sel.length && sel.every((i) => state.selected.has(i.path))) ? '取消全选' : '全选';
+    }
     $$('.sel-bar .sel-op[data-act="tag"], .sel-bar .sel-op[data-act="move"]')
       .forEach((b) => { b.disabled = n === 0; });
   }
@@ -987,6 +1017,7 @@
 
   /* ---------- 批量加标签 ---------- */
   let batchItems = [];
+  const btExpanded = new Set();   // 展开的分组 id（默认收起，点分组头展开）
   function closeBatchTag() { $('#batchTagModal').hidden = true; batchItems = []; }
   function finishBatchTag() {
     if (smart === 'tag') reapplyFilter(); else { render(); loadTree(); }
@@ -1010,7 +1041,12 @@
     if (state.groups.length) {
       for (const g of sortGroups(state.groups)) {
         const inG = sortTags(state.tags.filter((t) => t.group === g.id && hit(t)));
-        if (inG.length) out += `<div class="modal-sec">${esc(g.name)}</div>` + inG.map(row).join('');
+        if (inG.length) {
+          const open = btExpanded.has(g.id);
+          out += `<button type="button" class="bt-sec" data-gid="${g.id}" aria-expanded="${open}">
+            <span class="bt-sec-t">${esc(g.name)}</span><span class="bt-sec-c">${inG.length}</span><span class="bt-sec-arrow">${open ? '▾' : '▸'}</span>
+          </button><div class="bt-group"${open ? '' : ' hidden'}>${inG.map(row).join('')}</div>`;
+        }
       }
       const loose = sortTags(state.tags.filter((t) => t.group == null && hit(t)));
       if (loose.length) out += (state.groups.length ? '<div class="modal-sec">未分类</div>' : '') + loose.map(row).join('');
@@ -1028,11 +1064,25 @@
       ? `给选中的 ${media.length} 个图片 / 视频加标签：`
       : `已选 ${items.length} 项，其中 ${media.length} 个图片 / 视频可以加标签：`;
     $('#batchTagFilter').value = '';
-    $('#batchTagModal').hidden = false;
-    renderBatchTags();
-  }
-  $('#batchTagList').addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-tid]');
+        $('#batchTagModal').hidden = false;
+        btExpanded.clear();        // 每次打开默认全收起
+        renderBatchTags();
+      }
+      $('#batchTagList').addEventListener('click', async (e) => {
+        const sec = e.target.closest('.bt-sec');
+        if (sec) {
+          // 点击分组头：展开 / 收起该组
+          const gid = Number(sec.dataset.gid);
+          const open = !btExpanded.has(gid);
+          open ? btExpanded.add(gid) : btExpanded.delete(gid);
+          const group = sec.nextElementSibling;
+          if (group) group.hidden = !open;
+          sec.setAttribute('aria-expanded', String(open));
+          const arrow = sec.querySelector('.bt-sec-arrow');
+          if (arrow) arrow.textContent = open ? '▾' : '▸';
+          return;
+        }
+        const b = e.target.closest('[data-tid]');
     if (!b) return;
     const media = batchItems.filter((i) => API.canTag(i));
     if (!media.length) { toast('选中的文件里没有能加标签的图片 / 视频', 3000); return; }
@@ -1407,7 +1457,30 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  /* 这把「是不是我传的」统一成一处判断：优先比 id，没有 id 就退回比名字 */
+  function isMine(it) {
+    if (!it || !state.user) return false;
+    if (it.uploaderId != null && it.uploaderId !== '') return String(it.uploaderId) === String(state.user.id);
+    return !!it.uploader && it.uploader === state.user.name;
+  }
+  const canDeleteNow = (it) => state.user.role === 'admin' || isMine(it);
+
   async function removeItem(it) {
+    // 别人的东西：不直接删，而是给上传者/管理员发一条删除请求
+    if (!canDeleteNow(it)) {
+      const okd = await uiConfirm({
+        title: '发送删除请求',
+        message: `「${it.name}」不是你上传的。\n你不是该文件的上传者，是否发送删除请求？`,
+        okText: '发送请求'
+      });
+      if (!okd) return;
+      try {
+        const r = await API.requestDel([it.path]);
+        if (r && r.made === 0) { toast(r.error || '已经发过删除请求了', 3600); return; }   // 重复请求：后端会告诉一声
+        toast('已发送，等待上传者或管理员同意', 3600);
+      } catch (e) { toast(e.message, 3600); }
+      return;
+    }
     const okd = await uiConfirm({
       title: it.isDir ? '删除文件夹' : '删除文件',
       message: it.isDir ? `确定删除文件夹「${it.name}」？\n里面的东西会一起删掉。` : `确定删除「${it.name}」？`,
@@ -1453,8 +1526,8 @@
   function openCtx(it, x, y) {
     closeCtx(); closeTagMenu();
     ctxAt = Date.now();
-    const mine = it.uploader === state.user.name;
-    const canDel = state.user.role === 'admin' || mine;
+    const mine = isMine(it);
+    const canDel = state.user.role === 'admin' || mine;    // 能直接删（改名的权限跟它一致）
     const m = document.createElement('div');
     m.className = 'ctxmenu';
     m.innerHTML = `<div class="cx-head" title="${esc(it.name)}">${esc(it.name)}</div>
@@ -1463,7 +1536,7 @@
       <button data-c="move">${ICON.move}<span>移动到…</span></button>` : ''}
       ${API.canTag(it) ? `<button data-c="tag">${ICON.tag}<span>标签</span></button>` : ''}
       ${it.isDir ? '' : `<button data-c="dl">${ICON.dl}<span>下载</span></button>`}
-      ${canDel ? `<button data-c="del" class="is-danger">${ICON.del}<span>删除</span></button>` : ''}`;
+      <button data-c="del" class="is-danger">${ICON.del}<span>${canDel ? '删除' : '请求删除'}</span></button>`;
     document.body.appendChild(m);
     const w = m.offsetWidth, h = m.offsetHeight;
     m.style.left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - w - 8)) + 'px';
@@ -1513,7 +1586,7 @@
       `<div class="info-row info-tags"><span>标签</span><div class="tags">${
         tags.length ? chipHTML(tags) : '<i class="info-none">还没加标签</i>'}</div></div>` +
       (API.canTag(it) ? `<div class="info-actions"><button class="btn btn-ghost btn-sm" id="infoTagBtn">${ICON.tag} 加标签</button></div>` : '');
-    $('#infoMove').hidden = !(state.user.role === 'admin' || it.uploader === state.user.name);
+    $('#infoMove').hidden = !canDeleteNow(it);
     $('#infoModal').hidden = false;
     const tb = $('#infoTagBtn');
     if (tb) tb.addEventListener('click', () => openTagMenu(state.infoItem, tb));
@@ -1726,7 +1799,7 @@
   $('#vcmList').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]');
     if (!b) return;
-    if (!await uiConfirm({ title: '删除评论', text: '确定删掉这条评论吗？', okText: '删除' })) return;
+    if (!await uiConfirm({ title: '删除评论', message: '确定删掉这条评论吗？', okText: '删除', danger: true })) return;
     try {
       await API.commentDel(b.dataset.del);
       vcmMsgs = vcmMsgs.filter((x) => String(x.id) !== String(b.dataset.del));
@@ -1735,75 +1808,219 @@
     } catch (ex) { toast(ex.message, 3200); }
   });
 
-  /* ---------------- 留言板（挂在左侧栏）---------------- */
-  let boardMsgs = [], boardCanEdit = false, boardLoadedOnce = false;
-  const LS_BOARD = 'cd.boardopen';
-  function applyBoardOpen() {
-    const open = localStorage.getItem(LS_BOARD) !== '0';
-    $('#boardBody').hidden = !open;
-    $('#boardHead').setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
+  /* ---------------- 留言板（独立整页：展示的就是最近的图片/视频评论） ---------------- */
+  let boardMsgs = [], boardCanEdit = false;
   function boardItemHTML(m) {
-    const mine = !!(state.user && state.user.id === m.uid);
+    const mine = !!(state.user && String(state.user.id) === String(m.uid));
     const del = (mine || boardCanEdit)
       ? `<button class="board-del" data-del="${m.id}" title="删除" aria-label="删除">×</button>` : '';
     const ico = m.kind === 'video'
       ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
       : '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>';
+    const preview = m.thumb ? `<img class="board-thumb" src="${esc(m.thumb)}" alt="" loading="lazy">` : `<div class="board-thumb ph">${ico}</div>`;
     return `<li class="board-item">
       ${avatarHTML(m.name, m.uid, m.hasAvatar, 'board-av')}
       <div class="board-main">
         <div class="board-top"><b>${esc(m.name)}</b><time>${esc(fmtWhen(m.created))}</time></div>
         <div class="board-text">${esc(m.text).replace(/\n/g, '<br>')}</div>
-        <button class="board-img" data-open="${esc(m.path)}" title="打开 ${esc(m.file)}">${ico}<span class="board-img-n">${esc(m.file)}</span></button>
+        <button class="board-file" data-open="${esc(m.path)}" title="打开 ${esc(m.file)}">${preview}<span class="board-file-n">${esc(m.file)}</span></button>
       </div>${del}</li>`;
   }
   function renderBoard() {
     const list = $('#boardList');
-    $('#boardCount').textContent = boardMsgs.length ? boardMsgs.length : '';
+    $('#boardCount').textContent = boardMsgs.length ? boardMsgs.length + ' 条' : '';
     if (!boardMsgs.length) { list.innerHTML = '<li class="board-empty">还没有评论 —— 打开一张图片就能评论</li>'; return; }
     list.innerHTML = boardMsgs.map(boardItemHTML).join('');
-    list.scrollTop = list.scrollHeight;
   }
   async function loadBoard() {
-    if (!boardLoadedOnce) $('#boardList').innerHTML = '<li class="board-empty">加载中…</li>';
+    const list = $('#boardList');
+    if (list && !list.children.length) list.innerHTML = '<li class="board-empty">加载中…</li>';
     try {
       const r = await API.board();
       boardMsgs = r.messages || [];
       boardCanEdit = !!r.canEdit;
-      boardLoadedOnce = true;
       renderBoard();
     } catch (e) {
-      $('#boardList').innerHTML = `<li class="board-empty">评论加载失败：${esc(e.message)}</li>`;
+      if (list) list.innerHTML = `<li class="board-empty">评论加载失败：${esc(e.message)}</li>`;
     }
   }
-  $('#boardHead').addEventListener('click', () => {
-    const willOpen = $('#boardBody').hidden;
-    localStorage.setItem(LS_BOARD, willOpen ? '1' : '0');
-    applyBoardOpen();
-  });
-  /* 留言板里的条目就是图片/视频下面的评论：点名字打开那张图，× 删自己那条 */
+  function openBoard() {
+    closeDrawer();
+    const sc = $('#boardScreen');
+    sc.hidden = false; sc.scrollTop = 0;
+    loadBoard();
+  }
+  function closeBoard() { $('#boardScreen').hidden = true; }
+  $('#boardHead').addEventListener('click', openBoard);
+  $('#boardBack').addEventListener('click', closeBoard);
+  /* 留言板里的条目就是图片/视频下面的评论：点文件名打开那张图，× 删自己那条 */
   function openBoardItem(path) {
     const m = boardMsgs.find((x) => x.path === path);
     if (!m) return;
     // 当前目录里能找到就用现成的那条（有缩略图/标签），找不到就现造一个最小对象
     const pool = (state.items && state.items.length) ? state.items : state.allItems;
     const found = (pool || []).find((x) => x.path === path);
-    closeDrawer();
+    closeBoard();
     openViewer(found || { path: m.path, name: m.file, kind: m.kind || 'image', isDir: false, tags: [], thumb: m.thumb });
   }
   $('#boardList').addEventListener('click', async (e) => {
-    const op = e.target.closest('[data-open]');
-    if (op) { openBoardItem(op.dataset.open); return; }
+    const op = e.target.closest('[data-open], .board-file');
+    if (op) { const p = op.dataset.open || op.getAttribute('data-open'); if (p) { openBoardItem(p); return; } }
     const b = e.target.closest('[data-del]');
     if (!b) return;
-    if (!await uiConfirm({ title: '删除评论', text: '确定删掉这条评论吗？', okText: '删除' })) return;
+    if (!await uiConfirm({ title: '删除评论', message: '确定删掉这条评论吗？', okText: '删除', danger: true })) return;
     try {
       await API.commentDel(b.dataset.del);
       boardMsgs = boardMsgs.filter((x) => String(x.id) !== String(b.dataset.del));
       renderBoard();
       if (vcmItem) loadComments(vcmItem);        // 评论抽屉开着的话，一起去掉
     } catch (ex) { toast(ex.message, 3200); }
+  });
+
+  /* ---------------- 删除请求（侧栏：别人想删你传的文件，你来点头） ---------------- */
+  let reqItems = [];
+  const REQ_POLL_MS = 60000;
+  function reqItemHTML(r) {
+    const ico = r.kind === 'video'
+      ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
+      : (r.kind === 'dir'
+        ? '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".85"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>');
+    const preview = r.thumb
+      ? `<img class="req-thumb" src="${esc(r.thumb)}" alt="" loading="lazy">`
+      : `<span class="req-thumb ph">${ico}</span>`;
+    return `<li class="req-item">
+      ${avatarHTML(r.askerName, r.asker, r.hasAvatar, 'req-av')}
+      <div class="req-main">
+        <div class="req-top"><b>${esc(r.askerName)}</b><time>${esc(fmtWhen(r.created))}</time></div>
+        <div class="req-text">想删除 ${r.kind === 'dir'
+          ? `<span class="req-file is-static">${preview}<span class="board-img-n">${esc(r.file)}</span></span>`
+          : `<button class="req-file" data-open="${esc(r.path)}" title="看看这个文件">${preview}<span class="board-img-n">${esc(r.file)}</span></button>`}</div>
+        <div class="req-btns">
+          <button class="btn btn-sm req-ok" data-ok="${r.id}">同意</button>
+          <button class="btn btn-ghost btn-sm" data-no="${r.id}">拒绝</button>
+        </div>
+      </div>
+    </li>`;
+  }
+  function renderReqs() {
+    const box = $('#reqs'), list = $('#reqsList');
+    box.hidden = !reqItems.length;
+    $('#reqsCount').textContent = reqItems.length ? reqItems.length : '';
+    list.innerHTML = reqItems.map(reqItemHTML).join('');
+  }
+  async function loadRequests() {
+    try {
+      const r = await API.requests();
+      reqItems = r.requests || [];
+      renderReqs();
+      showNextReq();                            // 有没提醒过的请求就立刻弹窗（上线 / 新请求）
+    } catch (e) { /* 静默：侧栏这块拉不到就先不显示，别打扰用户 */ }
+  }
+  let reqTimer = null;
+  function startReqPoll() {
+    if (reqTimer) return;
+    reqTimer = setInterval(() => { if (!$('#app').hidden) loadRequests(); }, REQ_POLL_MS);
+  }
+
+  /* ---------- 删除请求弹窗（决定者一上线 / 有新请求时弹出；同意 / 拒绝 / 稍后处理） ---------- */
+  const reqNotified = new Set();        // 已弹过提醒的请求 id，不再重复打扰
+  let reqWorking = false;               // 弹窗请求处理中（防连点）
+  const reqKindIcon = (k) => k === 'video'
+    ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" fill="currentColor" opacity=".9"/><path d="M17 10.5 21 8v8l-4-2.5z" fill="currentColor"/></svg>'
+    : (k === 'dir'
+      ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7a3 3 0 0 1 3-3h3.4a3 3 0 0 1 2.1.9l.9.9H17a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z" fill="currentColor" opacity=".85"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.6 16.4l3.5-4 2.6 2.9 1.9-2.1 2.8 3.2z" fill="currentColor"/></svg>');
+  function showNextReq() {
+    const modal = $('#reqModal');
+    const next = reqItems.find((x) => !reqNotified.has(String(x.id)));
+    if (!next) { modal.hidden = true; return; }
+    reqNotified.add(String(next.id));
+    modal.dataset.id = next.id;
+    $('#reqPopFile').textContent = next.file;
+    $('#reqPopSub').textContent = `${next.askerName} 想删除${next.kind === 'dir' ? '文件夹' : '文件'} · ${fmtWhen(next.created)}`;
+    const th = $('#reqPopThumb');
+    th.classList.toggle('is-ph', !next.thumb);
+    th.innerHTML = next.thumb ? `<img src="${esc(next.thumb)}" alt="" loading="lazy">` : reqKindIcon(next.kind);
+    modal.hidden = false;
+  }
+  // 「同意 / 拒绝」真的提交；处理完自动接着弹下一条
+  async function reqPopupDecide(id, ok) {
+    if (reqWorking) return;
+    reqWorking = true;
+    const asked = reqItems.find((x) => String(x.id) === String(id));
+    try {
+      await API.requestDecide(id, ok);
+      reqItems = reqItems.filter((x) => String(x.id) !== String(id));
+      renderReqs();
+      toast(ok ? '已同意，文件已删除' : '已拒绝');
+      if (ok && asked) {
+        const hitPath = asked.path;
+        const gone = (x) => x.path === hitPath || x.path.indexOf((hitPath || '').replace(/\/$/, '') + '/') === 0;
+        state.items = state.items.filter((x) => !gone(x));
+        state.allItems = state.allItems.filter((x) => !gone(x));
+        render(); loadTree();
+        if (!$('#boardScreen').hidden) loadBoard();
+      }
+      showNextReq();                            // 有就继续弹下一条
+    } catch (e) {
+      toast(e.message, 3600);
+      loadRequests();                           // 可能请求已被别人处理，重新拉
+    } finally { reqWorking = false; }
+  }
+  // 「稍后处理」：关弹窗，剩下的也不追着弹了，侧栏里能随时处理
+  function reqPopupLater() {
+    $('#reqModal').hidden = true;
+    reqItems.forEach((x) => reqNotified.add(String(x.id)));
+  }
+  $('#reqApprove').addEventListener('click', () => reqPopupDecide($('#reqModal').dataset.id, true));
+  $('#reqReject').addEventListener('click', () => reqPopupDecide($('#reqModal').dataset.id, false));
+  $('#reqLater').addEventListener('click', reqPopupLater);
+  $('#reqClose').addEventListener('click', reqPopupLater);
+  $('#reqModal').addEventListener('click', (e) => { if (e.target === $('#reqModal')) reqPopupLater(); });
+  function openReqItem(path) {
+    const r = reqItems.find((x) => x.path === path);
+    if (!r) return;
+    const pool = (state.items && state.items.length) ? state.items : state.allItems;
+    const found = (pool || []).find((x) => x.path === path);
+    closeDrawer();
+    openViewer(found || { path: r.path, name: r.file, kind: r.kind || 'file', isDir: r.kind === 'dir', tags: [] });
+  }
+  async function decideReq(id, ok) {
+    const asked = reqItems.find((x) => String(x.id) === String(id));
+    const name = asked ? asked.file : '这个文件';
+    const okd = await uiConfirm({
+      title: ok ? '同意删除' : '拒绝请求',
+      message: ok ? `同意后「${name}」会被真的删掉，评论和标签也会一起没。` : `拒绝后请求会消失，「${name}」保留。`,
+      okText: ok ? '同意删除' : '拒绝', cancelText: '稍后处理', danger: ok
+    });
+    if (okd === '稍后处理') return;
+    if (!okd) return;
+    try {
+      await API.requestDecide(id, ok);
+      reqItems = reqItems.filter((x) => String(x.id) !== String(id));
+      renderReqs();
+      toast(ok ? '已同意，文件已删除' : '已拒绝');
+      if (ok) {
+        const hitPath = asked && asked.path;
+        const gone = (x) => x.path === hitPath || x.path.indexOf((hitPath || '').replace(/\/$/, '') + '/') === 0;
+        state.items = state.items.filter((x) => !gone(x));
+        state.allItems = state.allItems.filter((x) => !gone(x));
+        render(); loadTree();
+        if (!$('#boardScreen').hidden) loadBoard();
+      }
+    } catch (e) {
+      toast(e.message, 3600);
+      loadRequests();          // 可能别人刚处理过，拉一次最新的
+    }
+  }
+  $('#reqsList').addEventListener('click', (e) => {
+    const op = e.target.closest('[data-open]');
+    if (op) { openReqItem(op.dataset.open); return; }
+    const ok = e.target.closest('[data-ok]');
+    if (ok) { decideReq(ok.dataset.ok, true); return; }
+    const no = e.target.closest('[data-no]');
+    if (no) decideReq(no.dataset.no, false);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -1817,6 +2034,7 @@
       closeDrawer(); closeTagMenu(); closeTagModal(); closeCtx();
       $('#infoModal').hidden = true; $('#moveModal').hidden = true;
       $('#settingsScreen').hidden = true;
+      $('#boardScreen').hidden = true;
       closeNotice();
       if (!$('#batchTagModal').hidden) { closeBatchTag(); finishBatchTag(); }
     }

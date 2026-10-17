@@ -41,9 +41,17 @@
    POST /api/comment        {path,text}                ← 发一条评论（最多 500 字）→ {ok,comment:Note}
    POST /api/comment/delete {id}                       ← 删自己的评论（管理员能删任何一条）
    GET  /api/board                                     → {messages:[Note+path/file/kind], canEdit}
-                                                          ← 侧栏「留言板」= 最近 200 条图片/视频评论，
+                                                          ← 「留言板」整页 = 最近 200 条图片/视频评论，
                                                             按时间正序；没有单独的留言数据，发评论就来这里
    Note = {id,uid,name,hasAvatar,text,created}         ← created 是毫秒时间戳；头像用 /api/avatar?id=uid 取
+
+   —— 删除请求（想删别人传的文件，得上传者或管理员点头）——
+   GET  /api/requests                                  → {requests:[Req], isAdmin}
+                                                          ← 管理员看全部；其他人只看自己传的文件上的请求
+   POST /api/request          {paths:["/a.jpg"]}       ← 请求删除（自己的文件不用请求；重复发会被跳过）
+   POST /api/request/decide   {id, ok:true|false}      ← 上传者或管理员同意(真删)/拒绝；谁先决定请求就消失
+   Req  = {id,path,file,kind,owner,ownerName,asker,askerName,hasAvatar,created,thumb}
+                                                          ← thumb 有就给出缩略图 URL（弹窗/列表预览用）
 
    —— 头像（每人一张，前端压成 256 宽 JPEG 后上传）——
    POST /api/avatar         (body=image/jpeg)          ← 设置自己的头像 → {ok,user}
@@ -212,6 +220,31 @@
     Object.keys(MOCK_CMTS).forEach((p) => { if (cmtHit(p, base)) delete MOCK_CMTS[p]; });
   };
 
+  /* ---------- 演示模式的删除请求（别人传的文件，我要删得先问一声）---------- */
+  let REQ_SEQ = 1;
+  const mkReq = (path, ownerName, askerName, ago) => {
+    const f = files.find((x) => x.path === path);
+    return { id: REQ_SEQ++, path, owner: uidOfName(ownerName), asker: uidOfName(askerName),
+             created: Date.now() - (ago || 0),
+             file: f ? f.name : path.split('/').pop(), kind: f ? f.kind : kindOf(path) };
+  };
+  let MOCK_REQS = [
+    mkReq('/照片/运动会合影.jpg', '赵一鸣', '陈小雨', 40 * 60e3),
+    mkReq('/视频/元旦晚会节目.mp4', '林小满', '王浩', 5 * 3600e3)
+  ];
+  const pubReq = (r) => {
+    const f = files.find((x) => x.path === r.path);
+    const thumb = f ? (f.thumb || placeholderThumb(f.name)) : null;
+    return { ...r, ownerName: (MOCK_USERS.find((u) => u.id === r.owner) || {}).name || '同学',
+             askerName: (MOCK_USERS.find((u) => u.id === r.asker) || {}).name || '同学',
+             hasAvatar: !!mockAvatars[r.asker], kind: f ? f.kind : r.kind, thumb, file: f ? f.name : r.file };
+  };
+  const reqHit = (p, base) => p === base || p.indexOf(base + '/') === 0;
+  const reqMove = (old, np) => {
+    MOCK_REQS.forEach((r) => { if (reqHit(r.path, old)) r.path = np + r.path.slice(old.length); });
+  };
+  const reqKill = (base) => { MOCK_REQS = MOCK_REQS.filter((r) => !reqHit(r.path, base)); };
+
   const mock = {
     async login(username, password) {
       await sleep(420);
@@ -222,7 +255,16 @@
       mockUser.hasAvatar = !!mockAvatars[mockUser.id];
       return { token: 'mock-' + Date.now(), user: mockUser };
     },
-    async me() { return { user: mockUser }; },
+    async me() {
+      // 刷新页面后 mockUser 会丢，从 app 存的那份用户信息补回来（演示模式专用）
+      if (!mockUser) {
+        try {
+          const u = JSON.parse(localStorage.getItem('cd.user') || 'null');
+          if (u) { mockUser = u; mockUser.hasAvatar = !!mockAvatars[u.id]; }
+        } catch (e) {}
+      }
+      return { user: mockUser };
+    },
     async changePassword(oldPw, newPw) {
       await sleep(300);
       if (newPw.length < 4) throw new Error('新密码至少 4 位');
@@ -279,6 +321,7 @@
         });
         moved.push({ from: old, to: np });
         cmtMove(old, np);
+        reqMove(old, np);
       }
       return { ok: true, moved };
     },
@@ -292,6 +335,7 @@
       it.name = name; it.path = np;
       files.filter((f) => f.path.indexOf(old + '/') === 0).forEach((f) => { f.path = np + f.path.slice(old.length); });
       cmtMove(old, np);
+      reqMove(old, np);
       return { ok: true, from: old, to: np, item: it };
     },
     async tags() {
@@ -386,7 +430,7 @@
       await sleep(120);
       const parent = path.replace(/\/[^/]+$/, '') || '/';
       const name = path.split('/').pop();
-      files.push({ id: 'f' + (SEQ++), name, path, parent, isDir: true, size: 0, mtime: Date.now(), uploader: '', kind: 'dir', thumb: null });
+      files.push({ id: 'f' + (SEQ++), name, path, parent, isDir: true, size: 0, mtime: Date.now(), uploader: mockUser?.name || '', uploaderId: mockUser?.id || null, kind: 'dir', thumb: null });
       return { ok: true };
     },
     async delete(paths) {
@@ -405,6 +449,7 @@
           const i = files.indexOf(f); if (i >= 0) files.splice(i, 1);
         });
         cmtKill(p);
+        reqKill(p);
         kill(p);
       }
       return { ok: true, removed: mine.length };
@@ -425,7 +470,7 @@
       const item = {
         id: 'f' + (SEQ++), name, path, parent, isDir: false,
         size: blob.totalSize, mtime: Date.now(), otime: otime || null,
-        uploader: mockUser?.name || '我',
+        uploader: mockUser?.name || '我', uploaderId: mockUser?.id || null,
         kind: kindOf(name), thumb: null, tags: [], __local: true
       };
       item.size = blob.totalSize;
@@ -484,12 +529,56 @@
       for (const p of Object.keys(MOCK_CMTS)) {
         const f = files.find((x) => x.path === p);
         if (!f) continue;                          // 文件删了就不显示了
+        const thumb = f.thumb || placeholderThumb(f.name);
         for (const n of MOCK_CMTS[p]) {
-          out.push(Object.assign(pubNote(n), { path: p, file: f.name, kind: f.kind, thumb: f.thumb }));
+          out.push(Object.assign(pubNote(n), { path: p, file: f.name, kind: f.kind, thumb }));
         }
       }
+      // 留言板按时间正序，但给文件信息补足缩略图（便于前端默认展示预览）
       out.sort((a, b) => a.created - b.created);
       return { messages: out, canEdit: mockUser?.role === 'admin' };
+    },
+
+    /* ---------- 删除请求 ---------- */
+    async requests() {
+      await sleep(140);
+      const admin = mockUser?.role === 'admin';
+      // 文件没了的请求直接作废（跟真后端一致）
+      MOCK_REQS = MOCK_REQS.filter((r) => files.some((f) => f.path === r.path));
+      const mine = MOCK_REQS.filter((r) => admin || r.owner === mockUser?.id)
+                            .sort((a, b) => a.id - b.id).map(pubReq);
+      return { requests: mine, isAdmin: !!admin };
+    },
+    /* 发删除请求：自己的文件不用发（前端本来也不会发） */
+    async requestDel(paths) {
+      await sleep(180);
+      let made = 0, dup = false, mineN = 0;
+      for (const p of paths || []) {
+        const f = files.find((x) => x.path === p);
+        if (!f) continue;
+        if ((f.uploaderId && f.uploaderId === mockUser?.id) || mockUser?.role === 'admin') { mineN++; continue; }
+        if (MOCK_REQS.some((r) => r.path === p && r.asker === mockUser?.id)) { dup = true; continue; }
+        MOCK_REQS.push({ id: REQ_SEQ++, path: p, owner: f.uploaderId, asker: mockUser?.id || 'u9',
+                         created: Date.now(), file: f.name, kind: f.kind });
+        made++;
+      }
+      if (!made) {
+        if (dup) return { ok: true, made: 0, dup: true, error: '已经发过删除请求了，等上传者或管理员处理' };
+        if (mineN) throw new Error('这是你自己上传的，直接删就行');
+        throw new Error('文件不存在');
+      }
+      return { ok: true, made };
+    },
+    /* 同意 → 真删；拒绝 → 只把请求去掉。谁先决定这条请求就消失 */
+    async requestDecide(id, ok) {
+      await sleep(200);
+      const i = MOCK_REQS.findIndex((r) => r.id === Number(id));
+      if (i < 0) throw new Error('这个请求已经被处理过了');
+      const r = MOCK_REQS[i];
+      if (mockUser?.role !== 'admin' && r.owner !== mockUser?.id) throw new Error('只有上传者或管理员能处理');
+      MOCK_REQS.splice(i, 1);
+      if (ok) await this.delete([r.path]);
+      return { ok: true, id: Number(id), accepted: !!ok };
     }
   };
 
@@ -513,7 +602,7 @@
       headers: headers(opts.headers),
       credentials: 'omit'
     });
-    if (res.status === 401) { API.token = null; throw new Error('登录已过期，请重新登录'); }
+    if (res.status === 401) { API.token = null; throw new Error(path === '/api/login' ? '用户名或密码错误' : '登录已过期，请重新登录'); }
     if (!res.ok) {
       let msg = 'HTTP ' + res.status;
       try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) {}
@@ -619,7 +708,16 @@
       return req('/api/comment/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }) });
     },
-    async board() { return req('/api/board'); }
+    async board() { return req('/api/board'); },
+    async requests() { return req('/api/requests'); },
+    async requestDel(paths) {
+      return req('/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths }) });
+    },
+    async requestDecide(id, ok) {
+      return req('/api/request/decide', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ok: !!ok }) });
+    }
   };
 
   Object.assign(API, {
@@ -651,7 +749,10 @@
     comments: (p) => (API.MOCK ? mock : real).comments(p),
     commentAdd: (p, t) => (API.MOCK ? mock : real).commentAdd(p, t),
     commentDel: (id) => (API.MOCK ? mock : real).commentDel(id),
-    board: () => (API.MOCK ? mock : real).board()
+    board: () => (API.MOCK ? mock : real).board(),
+    requests: () => (API.MOCK ? mock : real).requests(),
+    requestDel: (paths) => (API.MOCK ? mock : real).requestDel(paths),
+    requestDecide: (id, ok) => (API.MOCK ? mock : real).requestDecide(id, ok)
   });
 
   /* 预设标签的配色（前后端共用这一套名字） */
