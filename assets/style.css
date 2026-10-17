@@ -720,8 +720,9 @@ html[data-font="wenkai"] body{
   border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .about-logo img{max-width:34px;max-height:21px;display:block}
 .about-name{font-weight:600;font-size:14px}
-.about-link{color:inherit;text-decoration:none;transition:.14s color}
-.about-link:hover{color:var(--brand-ink);text-decoration:underline}
+.about-friends{margin-top:12px;font-size:12px;color:var(--ink-3)}
+.about-friends a{color:var(--brand-ink);text-decoration:none;transition:.14s color}
+.about-friends a:hover{text-decoration:underline}
 .about-note{font-size:12px;color:var(--ink-3)}
 .about-logo-heart{background:#fff2f5;border-color:#f4cbd8}
 .about-heart{font-size:19px;line-height:1;color:#e5486a}
