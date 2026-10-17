@@ -797,6 +797,7 @@
         <button class="btn btn-sm sel-op" data-act="all">全选</button>
         <button class="btn btn-sm sel-op" data-act="tag"${selCount ? '' : ' disabled'}>批量加标签</button>
         <button class="btn btn-sm sel-op" data-act="move"${selCount ? '' : ' disabled'}>移动到…</button>
+        <button class="btn btn-sm sel-op" data-act="del"${selCount ? '' : ' disabled'}>删除</button>
         <button class="btn btn-sm sel-op" data-act="cancel">取消</button>`;
       document.querySelector('.main').appendChild(bar);
       bar.addEventListener('click', (e) => {
@@ -805,6 +806,7 @@
         if (act === 'all') toggleSelectAll();
         else if (act === 'tag') openBatchTag();
         else if (act === 'move') openBatchMove();
+        else if (act === 'del') batchRemove();
         else if (act === 'cancel') clearSelection();
       });
     }
@@ -1002,7 +1004,7 @@
       allBtn.disabled = sel.length === 0;
       allBtn.textContent = (sel.length && sel.every((i) => state.selected.has(i.path))) ? '取消全选' : '全选';
     }
-    $$('.sel-bar .sel-op[data-act="tag"], .sel-bar .sel-op[data-act="move"]')
+    $$('.sel-bar .sel-op[data-act="tag"], .sel-bar .sel-op[data-act="move"], .sel-bar .sel-op[data-act="del"]')
       .forEach((b) => { b.disabled = n === 0; });
   }
 
@@ -1483,7 +1485,7 @@
     }
     const okd = await uiConfirm({
       title: it.isDir ? '删除文件夹' : '删除文件',
-      message: it.isDir ? `确定删除文件夹「${it.name}」？\n里面的东西会一起删掉。` : `确定删除「${it.name}」？`,
+      message: it.isDir ? `确定删除文件夹「${it.name}」？\n里面的内容会移到「未分类」文件夹，只删掉文件夹本身。` : `确定删除「${it.name}」？`,
       okText: '删除', danger: true
     });
     if (!okd) return;
@@ -1495,6 +1497,40 @@
       render(); renderQuota(); loadTree();
       toast('已删除');
     } catch (e) { toast(e.message, 3600); }
+  }
+
+  /* 批量删除：自己传的直接删；别人的发删除请求；文件夹只删壳（内容移到「未分类」） */
+  async function batchRemove() {
+    const items = allSelectedItems();
+    if (!items.length) return;
+    const mine = items.filter(canDeleteNow);
+    const theirs = items.filter((i) => !canDeleteNow(i));
+    let msg = `确定删除选中的 ${items.length} 项？`;
+    if (items.some((i) => i.isDir)) msg += '\n文件夹只删外壳，里面的内容会移到「未分类」文件夹。';
+    if (theirs.length) msg += `\n其中 ${theirs.length} 项不是你上传的，会改为发送删除请求。`;
+    const okd = await uiConfirm({ title: '批量删除', message: msg, okText: '删除', danger: true });
+    if (!okd) return;
+    let errs = 0;
+    if (mine.length) {
+      try {
+        await API.remove(mine.map((i) => i.path));
+      } catch (e) { toast(e.message, 3600); errs++; }
+    }
+    if (theirs.length) {
+      try {
+        const r = await API.requestDel(theirs.map((i) => i.path));
+        if (r && r.made === 0) toast(r.error || '已经发过删除请求了', 3600);
+        else toast(`已发送 ${r.made} 条删除请求`, 3600);
+      } catch (e) { toast(e.message, 3600); errs++; }
+    }
+    if (mine.length) {
+      const gone = (x) => mine.some((m) => x.path === m.path || x.path.indexOf(m.path.replace(/\/$/, '') + '/') === 0);
+      state.items = state.items.filter((x) => !gone(x));
+      state.allItems = state.allItems.filter((x) => !gone(x));
+    }
+    render(); renderQuota(); loadTree();
+    if (!$('#boardScreen').hidden) loadBoard();
+    if (!errs) toast('删除完成');
   }
 
   /* 重命名（入口只在「自己传的 / 管理员」的菜单里出现） */
