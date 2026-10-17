@@ -170,6 +170,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .btn-ghost{background:transparent;color:var(--md-sys-color-primary)}
 .btn-ghost:hover{background:color-mix(in srgb,var(--md-sys-color-primary) 8%,transparent)}
+#selBtn{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);border:0}
+#selBtn:hover{background:color-mix(in srgb,var(--md-sys-color-primary) 14%,var(--md-sys-color-primary-container))}
+#selBtn.is-on{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary)}
 .btn-block{width:100%;height:48px}
 .btn-sm{height:36px;padding:0 16px;font-size:13px}
 .icon-btn{
@@ -316,7 +319,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb .ph{display:grid;place-items:center;gap:6px;color:var(--md-sys-color-on-surface-variant);width:100%;height:100%}
 .thumb .ph b{font-size:11px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
-.thumb .badge{position:absolute;left:8px;top:8px;font-size:11px;padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);background:color-mix(in srgb,var(--md-sys-color-scrim) 60%,transparent);color:#fff;backdrop-filter:blur(3px)}
+.thumb .badge{position:absolute;left:8px;top:8px;font-size:11px;padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);background:color-mix(in srgb,var(--md-sys-color-scrim) 75%,transparent);color:#fff}
 .card .meta{padding:12px 12px 14px}
 .card .fname{font-size:14px;font-weight:500;line-height:1.35;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--md-sys-color-on-surface)}
 .card .fup{margin-top:4px;font-size:11px;line-height:1.3;color:var(--md-sys-color-on-surface-variant);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -612,12 +615,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 /* 搜索范围按钮（MD3 filter chip） */
 .search-fields{display:flex;align-items:center;gap:6px;flex:none}
-.search-fields .sf{height:32px;padding:0 12px;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-xs);background:transparent;color:var(--md-sys-color-on-surface-variant);font-size:12px;cursor:pointer;white-space:nowrap;transition:.18s;display:inline-flex;align-items:center;gap:6px}
+.search-fields .sf{height:32px;padding:0 12px;border:0;border-radius:var(--md-sys-shape-corner-xs);background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);font-size:12px;cursor:pointer;white-space:nowrap;transition:.18s;display:inline-flex;align-items:center;gap:6px}
 .search-fields .sf:hover{color:var(--md-sys-color-on-surface)}
-.search-fields .sf.is-on{background:var(--md-sys-color-secondary-container);border-color:transparent;color:var(--md-sys-color-on-secondary-container);font-weight:500}
-.scope-toggle{flex:none;height:32px;padding:0 12px;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-xs);background:transparent;color:var(--md-sys-color-on-surface-variant);font-size:12px;cursor:pointer;white-space:nowrap;transition:.18s}
+.search-fields .sf.is-on{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);font-weight:500}
+.scope-toggle{flex:none;height:32px;padding:0 12px;border:0;border-radius:var(--md-sys-shape-corner-xs);background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);font-size:12px;cursor:pointer;white-space:nowrap;transition:.18s}
 .scope-toggle:hover{color:var(--md-sys-color-on-surface)}
-.scope-toggle.is-on{background:var(--md-sys-color-primary);border-color:transparent;color:var(--md-sys-color-on-primary);font-weight:500}
+.scope-toggle.is-on{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);font-weight:500}
 
 /* 右键 / 长按菜单（MD3 menu） */
 .ctxmenu{position:fixed;z-index:97;width:200px;padding:8px;background:var(--md-sys-color-surface-container);border-radius:var(--md-sys-shape-corner-md);animation:pop .14s var(--md-emphasized-decel);box-shadow:0 2px 6px -2px rgba(0,0,0,.15),0 6px 16px -4px rgba(0,0,0,.2)}
@@ -774,6 +777,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .accent-dot{width:40px;height:40px;border-radius:var(--md-sys-shape-corner-full);border:2px solid var(--md-sys-color-outline-variant);background:var(--ac);cursor:pointer;padding:0;transition:box-shadow .18s var(--md-standard),transform .14s var(--md-standard)}
 .accent-dot:hover{transform:scale(1.1)}
 .accent-dot.is-on{box-shadow:0 0 0 3px var(--md-sys-color-surface-container),0 0 0 5px var(--ac);border-color:transparent}
+
+/* perf: 长列表渲染优化（减少首屏与滚动时的布局/绘制开销） */
+.files.grid .card, .files.list .row, .up-list .up-item, .vcm-list .vcm-item, .bt-list .bt-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px;
+}
 </style>
 </head>
 <body>
@@ -789,11 +798,11 @@ button,input,select,textarea{font:inherit;color:inherit}
     <form id="loginForm" autocomplete="on">
       <label class="field">
         <span id="userLabel">用户名</span>
-        <input id="loginUser" name="username" type="text" inputmode="text" autocomplete="username" required>
+        <input id="loginUser" name="username" type="text" inputmode="text" autocomplete="username" placeholder="你的真实姓名" required>
       </label>
       <label class="field">
         <span id="passLabel">密码</span>
-        <input id="loginPass" name="password" type="password" autocomplete="current-password" required>
+        <input id="loginPass" name="password" type="password" autocomplete="current-password" placeholder="默认为你的姓名拼音首字母小写加123456" required>
       </label>
       <p class="field-hint" id="passHint" hidden>自己设一个（至少 4 位），别忘了；忘了找管理员重置</p>
       <label class="field reg-only" hidden>
