@@ -1241,6 +1241,7 @@
     state.searchLocal = !state.searchLocal;
     localStorage.setItem('cd.searchLocal', state.searchLocal ? '1' : '0');
     syncSearchScope();
+    toast(state.searchLocal ? '已切换：只在当前目录里搜索' : '已切换：在整个网盘搜索');
     if (state.query) $('#searchInput').dispatchEvent(new Event('input'));   // 有搜索词立刻按新模式重搜
   });
   syncSearchScope();

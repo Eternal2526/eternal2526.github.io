@@ -567,6 +567,13 @@ button,input,select{font:inherit;color:inherit}
   transition:.16s background,.16s color,.16s border-color}
 .search-fields .sf:hover{color:var(--ink);border-color:var(--ink-3)}
 .search-fields .sf.is-on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+/* 全局 / 目录内 搜索开关：安卓 FilterChip 风格（选中 = 品牌色填充白字） */
+.scope-toggle{flex:none;height:26px;padding:0 11px;border:1px solid var(--line-strong);border-radius:99px;
+  background:var(--panel-2);color:var(--ink-3);font-size:12px;cursor:pointer;white-space:nowrap;
+  transition:.16s background,.16s color,.16s border-color}
+.scope-toggle:hover{color:var(--ink);border-color:var(--ink-3)}
+.scope-toggle.is-on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+:root[data-theme="dark"] .scope-toggle.is-on{color:#0d1a12}
 
 /* ---------- 右键 / 长按菜单 ---------- */
 .ctxmenu{position:fixed;z-index:97;width:188px;padding:5px;background:var(--panel);
