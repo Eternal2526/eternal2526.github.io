@@ -13,6 +13,7 @@
     folder: '/',            // 当前目录
     query: '',              // 搜索词
     scope: 'all',           // all | mine
+    searchLocal: localStorage.getItem('cd.searchLocal') === '1',   // 搜索范围：目录内 / 全局
     items: [],
     allItems: [],           // 全量（左侧计数/智能视图用），首屏渲染前是空数组
     view: localStorage.getItem(LS_VIEW) || 'grid',
@@ -784,8 +785,26 @@
       });
     } else {
       $('#empty').hidden = true;
-      box.innerHTML = state.view === 'list' ? all.map(rowHTML).join('') : all.map(cardHTML).join('');
+      // 大目录分批渐进渲染，避免一次拼整个列表把滚动卡死
+      const rows = all.map(state.view === 'list' ? rowHTML : cardHTML);
+      if (rows.length <= 60) { box.innerHTML = rows.join(''); finishRender(); }
+      else {
+        box.innerHTML = '';
+        let i = 0;
+        const step = () => {
+          box.insertAdjacentHTML('beforeend', rows.slice(i, i + 12).join(''));
+          i += 12;
+          if (i < rows.length) requestAnimationFrame(step);
+          else finishRender();
+        };
+        step();
+      }
+      return;
     }
+    finishRender();
+  }
+
+  function finishRender() {
     // 选择模式下的浮动操作栏（先清掉旧的，避免重复叠加）
     const oldBar = document.querySelector('.sel-bar');
     if (oldBar) oldBar.remove();
@@ -811,6 +830,42 @@
       });
     }
     bindItems();
+    bindLazyVideoCovers();
+  }
+
+  /* 存量视频没有封面（功能上线前传的）：滚动到可见时自动抓首帧回传，补上封面 */
+  let vidObs = null;
+  function bindLazyVideoCovers() {
+    if (!vidObs) {
+      vidObs = new IntersectionObserver((es) => {
+        es.forEach((e) => {
+          if (!e.isIntersecting) return;
+          vidObs.unobserve(e.target);
+          const item = (state.items.concat(state.allItems)).find((x) => x.path === e.target.dataset.path);
+          if (item && !item.__vidTry) { item.__vidTry = true; lazyVideoCover(item, e.target); }
+        });
+      }, { rootMargin: '300px' });
+    }
+    $$('#files [data-kind="video"]').forEach((el) => {
+      if (!el.querySelector('img')) vidObs.observe(el);   // 还没有封面图的视频
+    });
+  }
+  async function lazyVideoCover(item, card) {
+    try {
+      const c = await captureVideoCanvas(API.rawUrl(item, false), 0.15);
+      const blob = await encodeJpegUnder(c, THUMB_MAX_BYTES, 0.72);
+      await API.putThumb(item.path, blob);
+      const t = URL.createObjectURL(blob);
+      item.localThumb = t;
+      const img = document.createElement('img');
+      img.src = t; img.loading = 'lazy'; img.decoding = 'async'; img.alt = '';
+      img.onload = () => {
+        const slot = card.querySelector('.thumb .ph') || card.querySelector('.ricon');
+        if (!slot) return;
+        if (slot.classList.contains('ricon')) { slot.innerHTML = ''; slot.appendChild(img); }
+        else slot.replaceWith(img);
+      };
+    } catch (e) { /* 个别格式抓不到就算了 */ }
   }
 
   function badgeKind(it) {
@@ -1162,7 +1217,7 @@
     searchTimer = setTimeout(async () => {
       state.query = q;
       if (!q) { go(state.folder); return; }
-      const r = await API.search(q, state.scope, null, null, fieldsQ());
+      const r = await API.search(q, state.scope, null, null, fieldsQ(), state.searchLocal ? state.folder : null);
       state.items = r.items;
       $('#crumbs').innerHTML = `<span class="cur">搜索：${esc(q)}</span>`;
       render();
@@ -1174,6 +1229,21 @@
     $$('#searchFields .sf').forEach((b) => b.classList.toggle('is-on', !!state.sfields[b.dataset.f]));
   }
   syncSearchFields();
+  /* 目录内 / 全局搜索开关（记住选择） */
+  function syncSearchScope() {
+    const b = $('#scopeToggle');
+    if (!b) return;
+    b.textContent = state.searchLocal ? '目录内' : '全局';
+    b.classList.toggle('is-on', state.searchLocal);
+    b.title = state.searchLocal ? '只在当前目录里搜' : '在整个网盘里搜';
+  }
+  $('#scopeToggle').addEventListener('click', () => {
+    state.searchLocal = !state.searchLocal;
+    localStorage.setItem('cd.searchLocal', state.searchLocal ? '1' : '0');
+    syncSearchScope();
+    if (state.query) $('#searchInput').dispatchEvent(new Event('input'));   // 有搜索词立刻按新模式重搜
+  });
+  syncSearchScope();
   $$('#searchFields .sf').forEach((b) => b.addEventListener('click', () => {
     const k = b.dataset.f;
     const on = SF_KEYS.filter((x) => state.sfields[x]);

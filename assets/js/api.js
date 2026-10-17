@@ -291,11 +291,12 @@
       }
       return { path: norm, items };
     },
-    async search(q, scope, tag, group, fields) {
+    async search(q, scope, tag, group, fields, base) {
       await sleep(180);
       const k = (q || '').trim().toLowerCase();
       const fset = fields ? new Set(fields.split(',')) : new Set(['name', 'uploader', 'tag']);
       let r = files.filter((f) => !f.isDir).map(withTags);
+      if (base && base !== '/' && base !== '') r = r.filter((f) => f.path.startsWith(base.replace(/\/$/, '') + '/'));
       if (scope === 'mine') r = r.filter((f) => f.uploader === mockUser?.name);
       if (tag != null) r = r.filter((f) => (f.tags || []).some((t) => t.id === Number(tag)));
       if (group != null) r = r.filter((f) => (f.tags || []).some((t) => t.group === Number(group)));
@@ -629,9 +630,9 @@
     async list(path, tag, group) {
       return req('/api/list?path=' + encodeURIComponent(path) + filterQ(tag, group));
     },
-    async search(q, scope, tag, group, fields) {
+    async search(q, scope, tag, group, fields, base) {
       return req('/api/search?q=' + encodeURIComponent(q) + '&scope=' + (scope || 'all') + filterQ(tag, group)
-        + (fields ? '&fields=' + fields : ''));
+        + (fields ? '&fields=' + fields : '') + (base ? '&base=' + encodeURIComponent(base) : ''));
     },
     async move(paths, to) {
       return req('/api/move', { method: 'POST', headers: { 'Content-Type': 'application/json' },
