@@ -1828,6 +1828,18 @@
       body.innerHTML = it.kind === 'image' ? `<img src="${esc(src)}" alt="">`
         : it.kind === 'video' ? `<video src="${esc(src)}" controls autoplay playsinline></video>`
         : `<audio src="${esc(src)}" controls autoplay></audio>`;
+      // 视频解码失败兜底：多半是 H.265(HEVC)，Chrome/Firefox 不支持，给下载入口而不是黑屏
+      if (it.kind === 'video') {
+        const vid = body.querySelector('video');
+        if (vid) vid.addEventListener('error', () => {
+          const dlUrl = API.rawUrl(it, true);
+          body.innerHTML = `<div style="color:#fff;text-align:center;max-width:440px;line-height:1.75;padding:24px">
+            <div style="font-size:16px;font-weight:500;margin-bottom:10px">这个视频浏览器无法直接播放</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.72)">多半是 H.265（HEVC）编码，Chrome / Firefox 不支持解码。下载后用手机或系统播放器就能看；也可以请上传者用 H.264 重新导出。</div>
+            <a class="btn btn-primary" style="margin-top:18px;display:inline-flex" href="${esc(dlUrl)}" download>下载观看</a>
+          </div>`;
+        });
+      }
     } else if ((it.kind === 'text' || it.kind === 'code') && !API.MOCK) {
       const r = await fetch(API.rawUrl(it)).then((x) => x.text()).catch(() => '');
       body.innerHTML = `<pre style="color:#e8efea;max-width:900px;white-space:pre-wrap;word-break:break-all;font:13px/1.6 ui-monospace,Consolas,monospace">${esc(r.slice(0, 20000))}</pre>`;
