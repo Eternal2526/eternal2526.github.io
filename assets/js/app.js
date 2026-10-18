@@ -1009,12 +1009,6 @@
   function toggleSelection(path) {
     const isAdding = !state.selected.has(path);
     if (isAdding) {
-      // 普通用户只能选自己传的文件
-      const file = state.items.find((i) => i.path === path) || state.allItems.find((i) => i.path === path);
-      if (file && file.uploader && file.uploader !== state.user.name && state.user.role !== 'admin') {
-        toast('只能选择自己上传的文件');
-        return;
-      }
       state.selected.add(path);
     } else {
       state.selected.delete(path);
@@ -1028,8 +1022,8 @@
     syncSelBar();
   }
 
-  // 当前列表里可选的项（管理员全部，普通用户仅自己上传的）
-  const selectableItems = () => state.items.filter((i) => state.user.role === 'admin' || isMine(i));
+  // 当前列表里可选的项（可多选任意文件；删除/移动时再按上传者过滤）
+  const selectableItems = () => state.items;
 
   // 全选 / 取消全选（已全选时再次点击则是取消全选）
   function toggleSelectAll() {
@@ -1171,9 +1165,11 @@
   function openBatchMove() {
     const items = allSelectedItems();
     if (!items.length) return;
-    const bad = items.find((i) => i.uploader && i.uploader !== state.user.name && state.user.role !== 'admin');
-    if (bad) { toast('只能移动自己上传的文件'); return; }
-    openMove(items);
+    const mine = items.filter(canDeleteNow);      // 只能移动自己的（管理员不限）
+    const skipped = items.length - mine.length;
+    if (!mine.length) { toast('选中的都不是你上传的，不能移动', 3000); return; }
+    if (skipped) toast(`已跳过 ${skipped} 项非你上传的文件`, 2600);
+    openMove(mine);
   }
 
   function go(path) {
@@ -1576,31 +1572,21 @@
   async function batchRemove() {
     const items = allSelectedItems();
     if (!items.length) return;
-    const mine = items.filter(canDeleteNow);
-    const theirs = items.filter((i) => !canDeleteNow(i));
-    let msg = `确定删除选中的 ${items.length} 项？`;
-    if (items.some((i) => i.isDir)) msg += '\n文件夹只删外壳，里面的内容会移到「未分类」文件夹。';
-    if (theirs.length) msg += `\n其中 ${theirs.length} 项不是你上传的，会改为发送删除请求。`;
+    const mine = items.filter(canDeleteNow);       // 只能删自己的（管理员不限）
+    const skipped = items.length - mine.length;
+    if (!mine.length) { toast('选中的都不是你上传的，不能删除', 3000); return; }
+    let msg = `确定删除选中的 ${mine.length} 项？`;
+    if (mine.some((i) => i.isDir)) msg += '\n文件夹只删外壳，里面的内容会移到「未分类」文件夹。';
+    if (skipped) msg += `\n另有 ${skipped} 项不是你上传的，会跳过（不删除）。`;
     const okd = await uiConfirm({ title: '批量删除', message: msg, okText: '删除', danger: true });
     if (!okd) return;
     let errs = 0;
-    if (mine.length) {
-      try {
-        await API.remove(mine.map((i) => i.path));
-      } catch (e) { toast(e.message, 3600); errs++; }
-    }
-    if (theirs.length) {
-      try {
-        const r = await API.requestDel(theirs.map((i) => i.path));
-        if (r && r.made === 0) toast(r.error || '已经发过删除请求了', 3600);
-        else toast(`已发送 ${r.made} 条删除请求`, 3600);
-      } catch (e) { toast(e.message, 3600); errs++; }
-    }
-    if (mine.length) {
-      const gone = (x) => mine.some((m) => x.path === m.path || x.path.indexOf(m.path.replace(/\/$/, '') + '/') === 0);
-      state.items = state.items.filter((x) => !gone(x));
-      state.allItems = state.allItems.filter((x) => !gone(x));
-    }
+    try {
+      await API.remove(mine.map((i) => i.path));
+    } catch (e) { toast(e.message, 3600); errs++; }
+    const gone = (x) => mine.some((m) => x.path === m.path || x.path.indexOf(m.path.replace(/\/$/, '') + '/') === 0);
+    state.items = state.items.filter((x) => !gone(x));
+    state.allItems = state.allItems.filter((x) => !gone(x));
     render(); renderQuota(); loadTree();
     if (!$('#boardScreen').hidden) loadBoard();
     if (!errs) toast('删除完成');
@@ -2292,6 +2278,8 @@
       const r = await API.setAvatar(blob);
       state.user = (r && r.user) || Object.assign({}, state.user, { hasAvatar: true });
       localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      API.avatarVer = Date.now();
+      try { localStorage.setItem('cd.avVer', API.avatarVer); } catch (e) {}
       syncAvatarUI();
       toast('头像已更新');
     } catch (err) { toast(err.message, 3600); }
@@ -2304,6 +2292,8 @@
       const r = await API.clearAvatar();
       state.user = (r && r.user) || Object.assign({}, state.user, { hasAvatar: false });
       localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      API.avatarVer = Date.now();
+      try { localStorage.setItem('cd.avVer', API.avatarVer); } catch (e) {}
       syncAvatarUI();
       toast('头像已移除');
     } catch (e) { toast(e.message, 3600); }

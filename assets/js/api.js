@@ -781,10 +781,11 @@
     return API.base + '/api/raw?path=' + encodeURIComponent(item.path) + (download ? '&dl=1' : '') + '&' + API.auth();
   };
   /* 头像地址：按用户 id 取（mock 用内存里的 dataURL） */
+  API.avatarVer = (function () { try { return Number(localStorage.getItem('cd.avVer')) || 0; } catch (e) { return 0; } })();
   API.avatarUrl = function (id) {
     if (id == null || id === '') return null;
     if (API.MOCK) return mockAvatars[id] || null;
-    return API.base + '/api/avatar?id=' + encodeURIComponent(id) + '&' + API.auth();
+    return API.base + '/api/avatar?id=' + encodeURIComponent(id) + '&' + API.auth() + '&v=' + (API.avatarVer || 0);
   };
 
   window.API = API;
