@@ -1313,16 +1313,17 @@
     return 'u' + (h >>> 0).toString(36);
   }
 
-  const UPLOAD_KINDS = new Set(['image', 'video', 'audio', 'pdf', 'doc', 'sheet', 'slide', 'text', 'code', 'archive']);
+  // 只拦明确的高危/可执行格式；其余（含未知扩展名）放行，避免误杀手机上常见文件
+  const BLOCKED_EXT = new Set(['iso', 'exe', 'dmg', 'apk', 'msi', 'bin', 'vbs', 'bat', 'cmd', 'scr', 'com', 'jar', 'deb', 'rpm', 'img', 'vhd', 'vhdx', 'wim', 'torrent', 'lnk', 'reg', 'ps1']);
   function addFiles(fileList) {
     let filesArr = Array.prototype.slice.call(fileList);
-    if (!filesArr.length) return;
-    // 前端先挡掉不支持的格式（iso / exe / dmg 等 kindOf 返回 other）
-    const rejected = filesArr.filter((f) => !UPLOAD_KINDS.has(API.kindOf(f.name)));
-    filesArr = filesArr.filter((f) => UPLOAD_KINDS.has(API.kindOf(f.name)));
-    if (rejected.length) {
-      const names = rejected.slice(0, 3).map((f) => f.name).join('、')
-        + (rejected.length > 3 ? ` 等 ${rejected.length} 个` : '');
+    if (!filesArr.length) { toast('没有读取到所选文件，请重试或换个文件管理器', 3200); return; }
+    const extName = (f) => (String(f.name || '').split('.').pop() || '').toLowerCase();
+    const blocked = filesArr.filter((f) => BLOCKED_EXT.has(extName(f)));
+    filesArr = filesArr.filter((f) => !BLOCKED_EXT.has(extName(f)));
+    if (blocked.length) {
+      const names = blocked.slice(0, 3).map((f) => f.name).join('、')
+        + (blocked.length > 3 ? ` 等 ${blocked.length} 个` : '');
       toast(`不支持的文件类型，已跳过：${names}`, 4200);
     }
     if (!filesArr.length) return;
