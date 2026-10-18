@@ -297,7 +297,7 @@
       const fset = fields ? new Set(fields.split(',')) : new Set(['name', 'uploader', 'tag']);
       let r = files.filter((f) => !f.isDir).map(withTags);
       if (base && base !== '/' && base !== '') r = r.filter((f) => f.path.startsWith(base.replace(/\/$/, '') + '/'));
-      if (scope === 'mine') r = r.filter((f) => f.uploader === mockUser?.name);
+      if (scope === 'mine') r = r.filter((f) => f.uploader === (mockUser&&mockUser.name));
       if (tag != null) r = r.filter((f) => (f.tags || []).some((t) => t.id === Number(tag)));
       if (group != null) r = r.filter((f) => (f.tags || []).some((t) => t.group === Number(group)));
       if (k) r = r.filter((f) => (fset.has('name') && f.name.toLowerCase().includes(k))
@@ -346,7 +346,7 @@
         count: files.filter((f) => !f.isDir && (fileTags[f.path] || []).includes(t.id)).length
       }));
       const groups = MOCK_GROUPS.map((g) => ({ ...g, tags: MOCK_TAGS.filter((t) => t.group === g.id).length }));
-      return { tags, groups, canEdit: mockUser?.role === 'admin' };
+      return { tags, groups, canEdit: (mockUser&&mockUser.role) === 'admin' };
     },
     async tagSet(path, add, remove) {
       await sleep(120);
@@ -431,7 +431,7 @@
       await sleep(120);
       const parent = path.replace(/\/[^/]+$/, '') || '/';
       const name = path.split('/').pop();
-      files.push({ id: 'f' + (SEQ++), name, path, parent, isDir: true, size: 0, mtime: Date.now(), uploader: mockUser?.name || '', uploaderId: mockUser?.id || null, kind: 'dir', thumb: null });
+      files.push({ id: 'f' + (SEQ++), name, path, parent, isDir: true, size: 0, mtime: Date.now(), uploader: (mockUser&&mockUser.name) || '', uploaderId: (mockUser&&mockUser.id) || null, kind: 'dir', thumb: null });
       return { ok: true };
     },
     async delete(paths) {
@@ -439,7 +439,7 @@
       const mine = paths.filter((p) => {
         const f = files.find((x) => x.path === p);
         if (!f) return false;
-        if (f.uploader && f.uploader !== mockUser?.name && mockUser?.role !== 'admin') {
+        if (f.uploader && f.uploader !== (mockUser&&mockUser.name) && (mockUser&&mockUser.role) !== 'admin') {
           throw new Error('只能删除自己上传的文件：' + f.name);
         }
         return true;
@@ -471,7 +471,7 @@
       const item = {
         id: 'f' + (SEQ++), name, path, parent, isDir: false,
         size: blob.totalSize, mtime: Date.now(), otime: otime || null,
-        uploader: mockUser?.name || '我', uploaderId: mockUser?.id || null,
+        uploader: (mockUser&&mockUser.name) || '我', uploaderId: (mockUser&&mockUser.id) || null,
         kind: kindOf(name), thumb: null, tags: [], __local: true
       };
       item.size = blob.totalSize;
@@ -506,12 +506,12 @@
     async comments(path) {
       await sleep(140);
       return { path, comments: (MOCK_CMTS[path] || []).map(pubNote),
-               canEdit: mockUser?.role === 'admin' };
+               canEdit: (mockUser&&mockUser.role) === 'admin' };
     },
     async commentAdd(path, text) {
       await sleep(180);
       if (!String(text || '').trim()) throw new Error('内容不能为空');
-      const n = mkNote(mockUser?.id || 'u9', mockUser?.name || '同学', String(text).trim().slice(0, 500), 0);
+      const n = mkNote((mockUser&&mockUser.id) || 'u9', (mockUser&&mockUser.name) || '同学', String(text).trim().slice(0, 500), 0);
       (MOCK_CMTS[path] = MOCK_CMTS[path] || []).push(n);
       return { ok: true, comment: pubNote(n) };
     },
@@ -537,16 +537,16 @@
       }
       // 留言板按时间正序，但给文件信息补足缩略图（便于前端默认展示预览）
       out.sort((a, b) => a.created - b.created);
-      return { messages: out, canEdit: mockUser?.role === 'admin' };
+      return { messages: out, canEdit: (mockUser&&mockUser.role) === 'admin' };
     },
 
     /* ---------- 删除请求 ---------- */
     async requests() {
       await sleep(140);
-      const admin = mockUser?.role === 'admin';
+      const admin = (mockUser&&mockUser.role) === 'admin';
       // 文件没了的请求直接作废（跟真后端一致）
       MOCK_REQS = MOCK_REQS.filter((r) => files.some((f) => f.path === r.path));
-      const mine = MOCK_REQS.filter((r) => admin || r.owner === mockUser?.id)
+      const mine = MOCK_REQS.filter((r) => admin || r.owner === (mockUser&&mockUser.id))
                             .sort((a, b) => a.id - b.id).map(pubReq);
       return { requests: mine, isAdmin: !!admin };
     },
@@ -557,9 +557,9 @@
       for (const p of paths || []) {
         const f = files.find((x) => x.path === p);
         if (!f) continue;
-        if ((f.uploaderId && f.uploaderId === mockUser?.id) || mockUser?.role === 'admin') { mineN++; continue; }
-        if (MOCK_REQS.some((r) => r.path === p && r.asker === mockUser?.id)) { dup = true; continue; }
-        MOCK_REQS.push({ id: REQ_SEQ++, path: p, owner: f.uploaderId, asker: mockUser?.id || 'u9',
+        if ((f.uploaderId && f.uploaderId === (mockUser&&mockUser.id)) || (mockUser&&mockUser.role) === 'admin') { mineN++; continue; }
+        if (MOCK_REQS.some((r) => r.path === p && r.asker === (mockUser&&mockUser.id))) { dup = true; continue; }
+        MOCK_REQS.push({ id: REQ_SEQ++, path: p, owner: f.uploaderId, asker: (mockUser&&mockUser.id) || 'u9',
                          created: Date.now(), file: f.name, kind: f.kind });
         made++;
       }
@@ -576,7 +576,7 @@
       const i = MOCK_REQS.findIndex((r) => r.id === Number(id));
       if (i < 0) throw new Error('这个请求已经被处理过了');
       const r = MOCK_REQS[i];
-      if (mockUser?.role !== 'admin' && r.owner !== mockUser?.id) throw new Error('只有上传者或管理员能处理');
+      if ((mockUser&&mockUser.role) !== 'admin' && r.owner !== (mockUser&&mockUser.id)) throw new Error('只有上传者或管理员能处理');
       MOCK_REQS.splice(i, 1);
       if (ok) await this.delete([r.path]);
       return { ok: true, id: Number(id), accepted: !!ok };
