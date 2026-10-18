@@ -2,6 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>
+/* 强制 https：避免从旧地址 301 过来时停在 http，导致脚本被拦截/混合内容出错 */
+(function () {
+  if (location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+  }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#006D3C">
 <title>小象云盘 · Material 3</title>
