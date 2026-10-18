@@ -1834,9 +1834,9 @@
         if (vid) vid.addEventListener('error', () => {
           const dlUrl = API.rawUrl(it, true);
           body.innerHTML = `<div style="color:#fff;text-align:center;max-width:440px;line-height:1.75;padding:24px">
-            <div style="font-size:16px;font-weight:500;margin-bottom:10px">这个视频浏览器无法直接播放</div>
-            <div style="font-size:13px;color:rgba(255,255,255,.72)">多半是 H.265（HEVC）编码，Chrome / Firefox 不支持解码。下载后用手机或系统播放器就能看；也可以请上传者用 H.264 重新导出。</div>
-            <a class="btn btn-primary" style="margin-top:18px;display:inline-flex" href="${esc(dlUrl)}" download>下载观看</a>
+            <div style="font-size:16px;font-weight:500;margin-bottom:10px">此视频为 H.265 编码</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.72)">受限于硬件性能，请下载后本地播放。</div>
+            <a class="btn btn-primary" style="margin-top:18px;display:inline-flex" href="${esc(dlUrl)}" download>下载播放</a>
           </div>`;
         });
       }
