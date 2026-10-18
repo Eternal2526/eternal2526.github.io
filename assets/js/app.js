@@ -908,7 +908,7 @@
         </div>`
       : '';
     const chips = it.isDir ? '' : tagChips(it, 3);
-    const up = (!it.isDir && it.uploader) ? String(it.uploader) : '';
+    const up = it.uploader ? String(it.uploader) : '';
     // 文件名下方一行灰色小字 = 上传者；再往下是「大小 / 修改时间」和标签
     return `<article class="card${isSelected ? ' is-sel' : ''}" data-path="${esc(it.path)}" data-kind="${it.kind}" data-dir="${it.isDir ? 1 : 0}" data-mine="${mine ? 1 : 0}">
       <div class="thumb">${it.isDir ? `<div class="ph">${ICON.folder}<b>文件夹</b></div>` : thumb + badgeKind(it)}</div>
@@ -939,7 +939,7 @@
     const canDel = state.user.role === 'admin' || mine;
     const isSelected = state.selMode && state.selected.has(it.path);
     const chips = it.isDir ? '' : tagChips(it, 3);
-    const up = (!it.isDir && it.uploader) ? String(it.uploader) : '';
+    const up = it.uploader ? String(it.uploader) : '';
     const selCheckbox = state.selMode
       ? `<span class="sel-check${isSelected ? ' is-on' : ''}" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
