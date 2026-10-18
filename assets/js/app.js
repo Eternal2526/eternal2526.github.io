@@ -833,6 +833,24 @@
     }
     bindItems();
     bindLazyVideoCovers();
+    bindThumbRetry();
+  }
+
+  /* 缩略图加载失败：自动重试一次（加参数破缓存），仍失败就停在占位 */
+  function bindThumbRetry() {
+    $$('#files .thumb img, #files .ricon img').forEach((img) => {
+      if (img.__rt) return;
+      img.__rt = true;
+      img.addEventListener('error', function onErr() {
+        if (img.dataset.retried) { img.removeEventListener('error', onErr); return; }
+        img.dataset.retried = '1';
+        try {
+          const u = new URL(img.src, location.href);
+          u.searchParams.set('_r', '1');
+          img.src = u.href;
+        } catch (e) { img.removeEventListener('error', onErr); }
+      });
+    });
   }
 
   /* 存量视频没有封面（功能上线前传的）：滚动到可见时自动抓首帧回传，补上封面 */
@@ -855,7 +873,7 @@
   async function lazyVideoCover(item, card) {
     try {
       const c = await captureVideoCanvas(API.rawUrl(item, false), 0.15);
-      const blob = await encodeJpegUnder(c, THUMB_MAX_BYTES, 0.72);
+      const blob = await encodeImageUnder(c, THUMB_MAX_BYTES, 0.72);
       await API.putThumb(item.path, blob);
       const t = URL.createObjectURL(blob);
       item.localThumb = t;
@@ -1295,8 +1313,18 @@
     return 'u' + (h >>> 0).toString(36);
   }
 
+  const UPLOAD_KINDS = new Set(['image', 'video', 'audio', 'pdf', 'doc', 'sheet', 'slide', 'text', 'code', 'archive']);
   function addFiles(fileList) {
-    const filesArr = Array.prototype.slice.call(fileList);
+    let filesArr = Array.prototype.slice.call(fileList);
+    if (!filesArr.length) return;
+    // 前端先挡掉不支持的格式（iso / exe / dmg 等 kindOf 返回 other）
+    const rejected = filesArr.filter((f) => !UPLOAD_KINDS.has(API.kindOf(f.name)));
+    filesArr = filesArr.filter((f) => UPLOAD_KINDS.has(API.kindOf(f.name)));
+    if (rejected.length) {
+      const names = rejected.slice(0, 3).map((f) => f.name).join('、')
+        + (rejected.length > 3 ? ` 等 ${rejected.length} 个` : '');
+      toast(`不支持的文件类型，已跳过：${names}`, 4200);
+    }
     if (!filesArr.length) return;
     const path = state.folder;
     for (const f of filesArr) {
@@ -1400,16 +1428,22 @@
   }
 
   /* 把 canvas 编成 JPEG，必要时逐步降质 / 缩边，保证不超过 maxBytes */
-  function canvasToJpegBlob(canvas, quality) {
+  /* 缩略图编码：优先 WebP（体积小 ~40%），浏览器不支持则回退 JPEG。全在前端生成，服务器零转码 */
+  const WEBP_OK = (() => {
+    try { return document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0; }
+    catch (e) { return false; }
+  })();
+  function canvasToBlob(canvas, type, quality) {
     return new Promise((res, rej) =>
-      canvas.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/jpeg', quality));
+      canvas.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), type, quality));
   }
-  async function encodeJpegUnder(canvas, maxBytes, startQ) {
+  async function encodeImageUnder(canvas, maxBytes, startQ) {
+    const type = WEBP_OK ? 'image/webp' : 'image/jpeg';
     let q = startQ || 0.8;
-    let blob = await canvasToJpegBlob(canvas, q);
+    let blob = await canvasToBlob(canvas, type, q);
     while (blob.size > maxBytes && q > 0.4) {          // 先降质量（0.8 → 0.4）
       q = Math.max(0.4, q - 0.1);
-      blob = await canvasToJpegBlob(canvas, q);
+      blob = await canvasToBlob(canvas, type, q);
     }
     let scale = 1;
     while (blob.size > maxBytes && scale > 0.34) {      // 还超 → 逐步缩边
@@ -1418,7 +1452,7 @@
       c2.width = Math.max(1, Math.round(canvas.width * scale));
       c2.height = Math.max(1, Math.round(canvas.height * scale));
       c2.getContext('2d').drawImage(canvas, 0, 0, c2.width, c2.height);
-      blob = await canvasToJpegBlob(c2, 0.72);
+      blob = await canvasToBlob(c2, type, 0.72);
     }
     return blob;
   }
@@ -1435,7 +1469,7 @@
           const c = document.createElement('canvas');
           c.width = w; c.height = h;
           c.getContext('2d').drawImage(img, 0, 0, w, h);
-          encodeJpegUnder(c, THUMB_MAX_BYTES, 0.8)
+          encodeImageUnder(c, THUMB_MAX_BYTES, 0.8)
             .then((b) => { URL.revokeObjectURL(url); b ? res(b) : rej(new Error('toBlob')); })
             .catch((e) => { URL.revokeObjectURL(url); rej(e); });
         } catch (e) { URL.revokeObjectURL(url); rej(e); }
@@ -1450,7 +1484,7 @@
     const url = URL.createObjectURL(file);
     try {
       const c = await captureVideoCanvas(url);
-      return await encodeJpegUnder(c, THUMB_MAX_BYTES, 0.72);
+      return await encodeImageUnder(c, THUMB_MAX_BYTES, 0.72);
     } finally { URL.revokeObjectURL(url); }
   }
 
