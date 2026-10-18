@@ -1821,6 +1821,7 @@
 
     if (it.kind === 'image' || it.kind === 'video' || it.kind === 'audio') {
       let src = it.localUrl || url;
+      if (it.kind === 'image' && /\.(heic|heif)$/i.test(it.name)) src = API.thumbUrl(it, 1600);  // HEIC 走后端转码预览
       if (API.MOCK && src === '#') src = it.kind === 'image' ? (it.thumb || null) : null;  // 演示模式用占位图
       if (!src) { toast('演示模式：真实文件接入后端后这里能直接预览'); return; }
       body.innerHTML = it.kind === 'image' ? `<img src="${esc(src)}" alt="">`
