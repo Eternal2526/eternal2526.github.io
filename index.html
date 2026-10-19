@@ -791,6 +791,15 @@ button,input,select,textarea{font:inherit;color:inherit}
 .files.grid .card { content-visibility: auto; contain-intrinsic-size: auto 230px; }
 .files.list .row { content-visibility: auto; contain-intrinsic-size: auto 68px; }
 .up-list .up-item, .vcm-list .vcm-item, .bt-list .bt-item { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+
+/* 卡片入场：只给首屏前 N 张做很轻的淡入 + 小上浮（只动 opacity/transform，走合成层、不重排），
+   后面分批插入的卡片不做动画 —— 保留 pop 手感，又不拖慢大目录 */
+@keyframes cardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.files.grid .card:nth-child(-n+24) { animation: cardIn .18s ease-out both; }
+.files.list .row:nth-child(-n+16) { animation: cardIn .16s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .files.grid .card, .files.list .row { animation: none !important; }
+}
 </style>
 </head>
 <body>
