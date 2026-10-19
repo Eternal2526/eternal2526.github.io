@@ -319,7 +319,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .files.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(168px,1fr))}
 .card{
   position:relative;background:var(--md-sys-color-surface-container-low);border:0;border-radius:var(--md-sys-shape-corner-md);
-  overflow:hidden;cursor:pointer;animation:pop .26s var(--md-emphasized-decel);
+  overflow:hidden;cursor:pointer;
   transition:background .18s var(--md-standard);
 }
 .card:hover{background:var(--md-sys-color-surface-container)}
@@ -787,11 +787,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 .accent-dot:hover{transform:scale(1.1)}
 .accent-dot.is-on{box-shadow:0 0 0 3px var(--md-sys-color-surface-container),0 0 0 5px var(--ac);border-color:transparent}
 
-/* perf: 长列表渲染优化（减少首屏与滚动时的布局/绘制开销） */
-.files.grid .card, .files.list .row, .up-list .up-item, .vcm-list .vcm-item, .bt-list .bt-item {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 150px;
-}
+/* perf: 长列表渲染优化（离屏内容跳过布局/绘制；intrinsic-size 按真实高度估，避免滚动条跳动） */
+.files.grid .card { content-visibility: auto; contain-intrinsic-size: auto 230px; }
+.files.list .row { content-visibility: auto; contain-intrinsic-size: auto 68px; }
+.up-list .up-item, .vcm-list .vcm-item, .bt-list .bt-item { content-visibility: auto; contain-intrinsic-size: auto 64px; }
 </style>
 </head>
 <body>

@@ -794,8 +794,8 @@
         box.innerHTML = '';
         let i = 0;
         const step = () => {
-          box.insertAdjacentHTML('beforeend', rows.slice(i, i + 12).join(''));
-          i += 12;
+          box.insertAdjacentHTML('beforeend', rows.slice(i, i + 24).join(''));
+          i += 24;
           if (i < rows.length) requestAnimationFrame(step);
           else finishRender();
         };
@@ -966,58 +966,85 @@
     </div>`;
   }
 
-  function bindItems() {
-    $$('#files .card[data-path], #files .row[data-path]').forEach((el) => {
-      const it = state.items.concat(state.allItems).find((x) => x.path === el.dataset.path) || { path: el.dataset.path, name: el.dataset.path.split('/').pop(), isDir: el.dataset.dir === '1', kind: el.dataset.kind };
-      if (state.selMode) {
-        // 选择模式：点击卡片任何位置（包括缩略图）切换选中状态
-        el.addEventListener('click', (e) => {
-          if (e.target.closest('[data-act]')) return;
-          e.stopPropagation();
-          toggleSelection(el.dataset.path);
-        });
-        return;
-      }
-      el.addEventListener('click', (e) => {
-        if (e.target.closest('[data-act]')) return;
-        if (Date.now() - ctxAt < 800) return;        // 刚弹出长按菜单，这次点击不算数
-        it.isDir ? go(it.path) : openViewer(it);
-      });
-      const dl = el.querySelector('[data-act="dl"]');
-      if (dl) dl.addEventListener('click', () => download(it));
-      const del = el.querySelector('[data-act="del"]');
-      if (del) del.addEventListener('click', () => removeItem(it));
-      const tg = el.querySelector('[data-act="tag"]');
-      if (tg) tg.addEventListener('click', (e) => { e.stopPropagation(); openTagMenu(it, tg); });
-      const more = el.querySelector('[data-act="more"]');
-      if (more) more.addEventListener('click', (e) => {
+  /* 事件委托：整个列表只绑一次，替代「每张卡片绑 10 个监听器」。
+     几百个文件时从上千个监听器降到 6 个，滚动、点击、长按都更跟手 */
+  let lpTimer = null, lpFrom = null, lpPath = null;
+  function findItemByPath(path) {
+    return state.items.concat(state.allItems).find((x) => x.path === path)
+      || { path, name: path.split('/').pop(), isDir: false, kind: '' };
+  }
+  function itemOfCard(el) {
+    const it = findItemByPath(el.dataset.path);
+    it.isDir = el.dataset.dir === '1';
+    if (!it.kind && el.dataset.kind) it.kind = el.dataset.kind;
+    return it;
+  }
+  function cardFrom(e) {
+    return e.target.closest ? e.target.closest('.card[data-path], .row[data-path]') : null;
+  }
+  function onFilesClick(e) {
+    const el = cardFrom(e);
+    if (!el) return;
+    const actEl = e.target.closest('[data-act]');
+    const it = itemOfCard(el);
+    if (state.selMode) {
+      if (actEl) return;
+      e.stopPropagation();
+      toggleSelection(el.dataset.path);
+      return;
+    }
+    if (actEl) {
+      const act = actEl.dataset.act;
+      if (act === 'dl') download(it);
+      else if (act === 'del') removeItem(it);
+      else if (act === 'tag') { e.stopPropagation(); openTagMenu(it, actEl); }
+      else if (act === 'more') {
         e.stopPropagation();
-        const r = more.getBoundingClientRect();
+        const r = actEl.getBoundingClientRect();
         openCtx(it, r.left - 130, r.bottom + 6);
-      });
-
-      /* 右键（桌面）/ 长按（手机）→ 菜单 */
-      el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openCtx(it, e.clientX, e.clientY); });
-      let lpTimer = null, lpFrom = null;
-      el.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
-        const t = e.touches[0];
-        lpFrom = { x: t.clientX, y: t.clientY };
-        clearTimeout(lpTimer);
-        lpTimer = setTimeout(() => {
-          lpTimer = null;
-          try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
-          openCtx(it, lpFrom.x, lpFrom.y);
-        }, 500);
-      }, { passive: true });
-      el.addEventListener('touchmove', (e) => {
-        if (!lpFrom || !e.touches.length) return;
-        const t = e.touches[0];
-        if (Math.abs(t.clientX - lpFrom.x) > 10 || Math.abs(t.clientY - lpFrom.y) > 10) { clearTimeout(lpTimer); lpTimer = null; }
-      }, { passive: true });
-      el.addEventListener('touchend', () => { clearTimeout(lpTimer); lpTimer = null; });
-      el.addEventListener('touchcancel', () => { clearTimeout(lpTimer); lpTimer = null; });
-    });
+      }
+      return;
+    }
+    if (Date.now() - ctxAt < 800) return;        // 刚弹出长按菜单，这次点击不算数
+    it.isDir ? go(it.path) : openViewer(it);
+  }
+  function onFilesCtx(e) {
+    const el = cardFrom(e);
+    if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    openCtx(itemOfCard(el), e.clientX, e.clientY);
+  }
+  function onFilesTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    const el = cardFrom(e);
+    if (!el) return;
+    lpPath = el.dataset.path;
+    const t = e.touches[0];
+    lpFrom = { x: t.clientX, y: t.clientY };
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => {
+      lpTimer = null;
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+      const hit = document.querySelector(`.card[data-path="${CSS.escape(lpPath)}"], .row[data-path="${CSS.escape(lpPath)}"]`) || el;
+      openCtx(itemOfCard(hit), lpFrom.x, lpFrom.y);
+    }, 500);
+  }
+  function onFilesTouchMove(e) {
+    if (!lpFrom || !e.touches.length) return;
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - lpFrom.x) > 10 || Math.abs(t.clientY - lpFrom.y) > 10) { clearTimeout(lpTimer); lpTimer = null; }
+  }
+  function onFilesTouchEnd() { clearTimeout(lpTimer); lpTimer = null; lpFrom = null; }
+  function bindItems() {
+    const box = $('#files');
+    if (box.__delegated) return;
+    box.__delegated = true;
+    box.addEventListener('click', onFilesClick);
+    box.addEventListener('contextmenu', onFilesCtx);
+    box.addEventListener('touchstart', onFilesTouchStart, { passive: true });
+    box.addEventListener('touchmove', onFilesTouchMove, { passive: true });
+    box.addEventListener('touchend', onFilesTouchEnd);
+    box.addEventListener('touchcancel', onFilesTouchEnd);
   }
 
   // 当前选中的文件（都在当前列表里）
