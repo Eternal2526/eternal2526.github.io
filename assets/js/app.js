@@ -1316,7 +1316,19 @@
       toast('文件夹已创建');
     } catch (e) { toast(e.message, 3600); }
   });
-  $('#filePicker').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+  /* 文件选择：用 document 捕获阶段委托（change 不冒泡，必须 capture），
+     避免 input 被替换或绑定丢失时收不到 change —— GeckoView 下常见“选完没反应”；
+     立刻把 FileList 拷成数组再清空 input，防止个别内核清空后取不到文件。 */
+  document.addEventListener('change', (e) => {
+    if (!e.target || e.target.id !== 'filePicker') return;
+    const picked = e.target.files ? Array.prototype.slice.call(e.target.files) : [];
+    try { e.target.value = ''; } catch (err) {}
+    if (window.__cdDebug) {
+      window.__cdDebug('change: ' + picked.length + ' 个文件');
+      picked.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
+    }
+    addFiles(picked);
+  }, true);
   $('#upMin').addEventListener('click', () => $('#uploader').hidden = true);
   $('#upRetry').addEventListener('click', () => queue.filter((q) => q.status === 'fail').forEach((q) => runTask(q)));
 
@@ -1356,10 +1368,11 @@
     if (!filesArr.length) return;
     const path = state.folder;
     for (const f of filesArr) {
+      const fname = f.name || ('file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
       const task = {
         id: 't' + Math.random().toString(36).slice(2, 8),
-        file: f, path: path === '/' ? '/' + f.name : path + '/' + f.name,
-        uploadId: uploadIdFor(f, path), chunks: Math.max(1, Math.ceil(f.size / CHUNK)),
+        file: f, name: fname, path: path === '/' ? '/' + fname : path + '/' + fname,
+        uploadId: uploadIdFor({ name: fname, size: f.size, lastModified: f.lastModified }, path), chunks: Math.max(1, Math.ceil(f.size / CHUNK)),
         status: 'wait', sent: 0, speed: 0, retry: 0, lastT: 0, lastB: 0, blob: f
       };
       queue.push(task);
@@ -1380,7 +1393,7 @@
       received = new Set(st.received || []);
       if (received.size && received.size < task.chunks) {
         task.sent = received.size * CHUNK;
-        toast(`继续上传「${task.file.name}」（已传 ${received.size}/${task.chunks} 片）`);
+        toast(`继续上传「${(task.name || task.file.name)}」（已传 ${received.size}/${task.chunks} 片）`);
       }
     } catch (e) { /* 首次上传没有记录，正常 */ }
 
@@ -1415,7 +1428,7 @@
           } catch (err) {
             attempt++;
             if (attempt > 3) { task.status = 'fail'; task.errmsg = err.message; renderQueue(); $('#upRetry').hidden = false; return; }
-            renderQueue(`重试 ${attempt}/3：${task.file.name}`);
+            renderQueue(`重试 ${attempt}/3：${(task.name || task.file.name)}`);
             await new Promise((r) => setTimeout(r, 700 * attempt));   // 指数退避后从该分片继续
           }
         }
@@ -1428,7 +1441,7 @@
 
   /* 上传成功后：本地生成缩略图（图片直接预览 / 视频抓首帧），并回传到后端存旁车 */
   async function onUploaded(task, item) {
-    const it = item || { id: 'x' + Date.now(), name: task.file.name, path: task.path, parent: state.folder, size: task.file.size, mtime: Date.now(), uploader: state.user.name, kind: API.kindOf(task.file.name), isDir: false, __local: true };
+    const it = item || { id: 'x' + Date.now(), name: (task.name || task.file.name), path: task.path, parent: state.folder, size: task.file.size, mtime: Date.now(), uploader: state.user.name, kind: API.kindOf((task.name || task.file.name)), isDir: false, __local: true };
     if (!it.tags) it.tags = [];
     try { it.localUrl = URL.createObjectURL(task.file); } catch (e) {}
     if (it.kind === 'image') {
@@ -2455,4 +2468,15 @@
     }
     $('#loginUser').focus();
   })();
+
+  /* ?debug=1 诊断面板（GeckoView 上传排查）：显示内核 UA + 每次文件选择的明细 */
+  if (/[?&]debug=1\b/.test(location.search)) {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;max-width:92vw;max-height:42vh;overflow:auto;background:rgba(0,0,0,.85);color:#7f7;font:11px/1.55 ui-monospace,Consolas,monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap';
+    document.body.appendChild(box);
+    const log = (s) => { box.textContent += s + '\n'; box.scrollTop = box.scrollHeight; };
+    window.__cdDebug = log;
+    log('UA: ' + navigator.userAgent);
+    log(/Gecko\/|Firefox\//.test(navigator.userAgent) ? '内核: Gecko/Firefox（GeckoView）' : '内核: Chromium 系');
+  }
 })();
