@@ -731,6 +731,23 @@ button,input,select,textarea{font:inherit;color:inherit}
 .notice-body ol{margin:0;padding-left:20px}
 .notice-body li{margin:4px 0}
 .notice-body li::marker{color:var(--md-sys-color-on-surface-variant)}
+/* 多条通知列表 */
+.notice-item{padding:14px 0;border-top:1px solid var(--md-sys-color-outline-variant)}
+.notice-item:first-child{border-top:0;padding-top:2px}
+.notice-item-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.notice-item-head b{font-size:15px;color:var(--md-sys-color-on-surface);font-weight:500}
+.notice-item.pinned .notice-item-head b{color:var(--md-sys-color-primary)}
+.notice-item-meta{font-size:12px;color:var(--md-sys-color-on-surface-variant);opacity:.82}
+.notice-item-text{margin-top:6px;font-size:14px;line-height:1.72;color:var(--md-sys-color-on-surface-variant);white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.notice-item-text.open{display:block;-webkit-line-clamp:unset;overflow:visible}
+.notice-more{margin-top:6px;background:none;border:0;padding:0;color:var(--md-sys-color-primary);font-size:13px;cursor:pointer}
+.notice-item-del{float:right;background:none;border:0;color:var(--md-sys-color-error,#b3261e);font-size:12px;cursor:pointer;padding:0;opacity:.85}
+.notice-compose{margin-top:16px;padding-top:14px;border-top:1px dashed var(--md-sys-color-outline-variant);display:flex;flex-direction:column;gap:8px}
+.notice-compose[hidden]{display:none}
+.notice-compose input,.notice-compose textarea{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface-container-low);color:var(--md-sys-color-on-surface);font:inherit;font-size:14px}
+.notice-compose textarea{min-height:110px;resize:vertical;line-height:1.6}
+.notice-compose-foot{display:flex;gap:8px;justify-content:flex-end}
+.notice-pin{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--md-sys-color-on-surface-variant)}
 
 @media (max-width:560px){
   .search-fields .sf{padding:0 6px;font-size:11px}
@@ -1279,7 +1296,17 @@ button,input,select,textarea{font:inherit;color:inherit}
       </button>
     </div>
     <div class="notice-body" id="noticeBody"></div>
+    <div class="notice-compose" id="noticeCompose" hidden>
+      <input id="noticeNewTitle" maxlength="80" placeholder="公告标题，例如：期末资料整理通知">
+      <textarea id="noticeNewBody" maxlength="5000" placeholder="公告内容，支持换行"></textarea>
+      <label class="notice-pin"><input type="checkbox" id="noticeNewPin"> 置顶这条公告</label>
+      <div class="notice-compose-foot">
+        <button class="btn" id="noticeNewCancel" type="button">取消</button>
+        <button class="btn btn-primary" id="noticeNewSend" type="button">发布</button>
+      </div>
+    </div>
     <div class="modal-foot">
+      <button class="btn" id="noticeComposeBtn" type="button" hidden>发公告</button>
       <button class="btn btn-primary" id="noticeOk" type="button">已了解（三天内不再展示）</button>
     </div>
   </div>

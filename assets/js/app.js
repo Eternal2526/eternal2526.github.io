@@ -2387,69 +2387,185 @@
     } catch (e) { toast(e.message, 3600); }
   });
 
-  /* ---------------- 公告 ----------------
-     内容放在服务器：GET /api/notice（后台可随时改，网页每次登录都会重新拉）；
-     拉不到时退回本地 assets/notice.json（离线也能看）。 */
+  /* ---------------- 通知 / 公告 ----------------
+     服务器 GET /api/notice → {notice:{items:[{id,title,body,pinned,created,author}]}}；
+     拉不到退回本地 assets/notice.json（同结构，也兼容旧的 sections 单条）。
+     置顶在前，其余按时间倒序；每条正文默认 3 行，可展开。
+     管理员在弹窗里可以直接发公告 / 删公告。 */
   const LS_NOTICE = 'cd.noticeAck';
   const NOTICE_DAYS = 3;
   let noticeData = null;
 
-  function noticeMuted() {
-    const t = parseInt(localStorage.getItem(LS_NOTICE) || '0', 10);
-    return t > 0 && (Date.now() - t) < NOTICE_DAYS * 24 * 60 * 60 * 1000;
+  function noticeItems(o) {
+    if (!o || typeof o !== 'object') return [];
+    if (Array.isArray(o.items)) return o.items.filter((x) => x && typeof x === 'object');
+    if (Array.isArray(o.sections)) {          // 旧格式兜底：sections → 一条通知
+      const lines = [];
+      if (o.intro) lines.push(String(o.intro));
+      o.sections.forEach((s) => {
+        if (!s || typeof s !== 'object') return;
+        if (s.heading) lines.push('【' + s.heading + '】');
+        if (Array.isArray(s.items)) s.items.forEach((t) => lines.push('· ' + t));
+        else if (s.text) lines.push(String(s.text));
+      });
+      return [{ id: 1, title: o.title || '公告', body: lines.join('\n'), pinned: true, created: 0, author: '' }];
+    }
+    return [];
   }
-  function noticeValid(o) {
-    return !!o && typeof o === 'object' && Array.isArray(o.sections) && o.sections.length > 0;
+  function noticeLatest(o) {
+    let max = 0;
+    noticeItems(o).forEach((it) => { max = Math.max(max, +it.created || 0); });
+    return max;
+  }
+  function noticeMuted(o) {
+    const t = parseInt(localStorage.getItem(LS_NOTICE) || '0', 10);
+    if (!t) return false;
+    if (noticeLatest(o) * 1000 > t) return false;    // 有新公告就再弹
+    return (Date.now() - t) < NOTICE_DAYS * 24 * 60 * 60 * 1000;
+  }
+  function noticeTime(ts) {
+    ts = +ts || 0;
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
   async function loadNotice() {
-    if (noticeValid(noticeData)) return noticeData;
     try {                                   // 1) 服务器（以后台为准）
       const r = await API.notice();
-      if (r && noticeValid(r.notice)) { noticeData = r.notice; return noticeData; }
+      if (r && r.notice) { noticeData = r.notice; return noticeData; }
     } catch (e) {}
     try {                                   // 2) 本地兜底
       const r = await fetch('assets/notice.json', { cache: 'no-cache' });
-      if (r.ok) { const o = await r.json(); if (noticeValid(o)) noticeData = o; }
+      if (r.ok) noticeData = await r.json();
     } catch (e) {}
     return noticeData;
   }
+  function noticeIsAdmin() { return !!(state.user && state.user.role === 'admin'); }
+
   function renderNotice(o) {
-    if (!noticeValid(o)) return;
-    if (o.title) $('#noticeTitle').textContent = o.title;
-    if (o.okText) $('#noticeOk').textContent = o.okText;
     const body = $('#noticeBody');
     body.textContent = '';
-    if (o.intro) { const p = document.createElement('p'); p.textContent = o.intro; body.appendChild(p); }
-    o.sections.forEach((s) => {
-      if (!s || typeof s !== 'object') return;
-      if (s.heading) { const h = document.createElement('h3'); h.textContent = s.heading; body.appendChild(h); }
-      if (Array.isArray(s.items) && s.items.length) {
-        const ol = document.createElement('ol');
-        s.items.forEach((t) => { const li = document.createElement('li'); li.textContent = String(t); ol.appendChild(li); });
-        body.appendChild(ol);
-      } else if (s.text) {
-        const p = document.createElement('p'); p.textContent = s.text; body.appendChild(p);
+    const items = noticeItems(o).slice().sort((a, b) => {
+      const pa = a.pinned ? 1 : 0, pb = b.pinned ? 1 : 0;
+      return pb - pa || ((+b.created || 0) - (+a.created || 0));
+    });
+    if (!items.length) {
+      const p = document.createElement('p');
+      p.textContent = '暂时没有公告。';
+      body.appendChild(p);
+      return;
+    }
+    items.forEach((it) => {
+      const card = document.createElement('div');
+      card.className = 'notice-item' + (it.pinned ? ' pinned' : '');
+
+      const head = document.createElement('div');
+      head.className = 'notice-item-head';
+      const ttl = document.createElement('b');
+      ttl.textContent = it.title || '公告';
+      head.appendChild(ttl);
+      const metaTxt = (it.pinned ? '置顶 · ' : '') + noticeTime(it.created) + (it.author ? ' · ' + it.author : '');
+      if (metaTxt) {
+        const meta = document.createElement('span');
+        meta.className = 'notice-item-meta';
+        meta.textContent = metaTxt;
+        head.appendChild(meta);
       }
+
+      const txt = document.createElement('div');
+      txt.className = 'notice-item-text';
+      txt.textContent = it.body || '';
+
+      card.appendChild(head);
+      card.appendChild(txt);
+
+      // 内容超过 3 行才给「展开」
+      const checkClamp = () => {
+        if (txt.classList.contains('open')) return;
+        if (txt.scrollHeight > txt.clientHeight + 2 && !card.querySelector('.notice-more')) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'notice-more';
+          more.textContent = '展开';
+          more.addEventListener('click', () => {
+            const open = txt.classList.toggle('open');
+            more.textContent = open ? '收起' : '展开';
+          });
+          card.appendChild(more);
+        }
+      };
+      requestAnimationFrame(checkClamp);
+
+      if (noticeIsAdmin()) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'notice-item-del';
+        del.textContent = '删除';
+        del.addEventListener('click', async () => {
+          if (!window.confirm('删除这条公告？')) return;
+          try {
+            await API.noticeDelete(it.id);
+            toast('公告已删除');
+            renderNotice(await loadNotice());
+          } catch (e) { toast(e.message, 3600); }
+        });
+        card.appendChild(del);
+      }
+
+      body.appendChild(card);
     });
   }
-  function openNotice() { $('#noticeModal').hidden = false; }
+  function openNotice() { $('#noticeModal').hidden = false; $('#noticeCompose').hidden = true; }
   function closeNotice() { $('#noticeModal').hidden = true; }
+  function syncNoticeAdminUI() { $('#noticeComposeBtn').hidden = !noticeIsAdmin(); }
   async function maybeShowNotice() {
     try {
-      renderNotice(await loadNotice());
-      if (!noticeMuted()) openNotice();
+      const o = await loadNotice();
+      renderNotice(o);
+      syncNoticeAdminUI();
+      if (!noticeMuted(o)) openNotice();
     } catch (e) {}
   }
   $('#noticeBtn').addEventListener('click', async () => {
     closeDrawer();
     openNotice();
-    renderNotice(await loadNotice());   // 第一次点的时候可能还没拉到
+    renderNotice(await loadNotice());
+    syncNoticeAdminUI();
   });
   $('#noticeClose').addEventListener('click', closeNotice);
   $('#noticeModal').addEventListener('click', (e) => { if (e.target === $('#noticeModal')) closeNotice(); });
   $('#noticeOk').addEventListener('click', () => {
     try { localStorage.setItem(LS_NOTICE, String(Date.now())); } catch (e) {}
     closeNotice();
+  });
+
+  /* 管理员：发公告 */
+  syncNoticeAdminUI();
+  $('#noticeComposeBtn').addEventListener('click', () => {
+    const box = $('#noticeCompose');
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('#noticeNewTitle').focus();
+  });
+  $('#noticeNewCancel').addEventListener('click', () => { $('#noticeCompose').hidden = true; });
+  $('#noticeNewSend').addEventListener('click', async () => {
+    const title = $('#noticeNewTitle').value.trim();
+    const body = $('#noticeNewBody').value.trim();
+    const pinned = $('#noticeNewPin').checked;
+    if (!title || !body) { toast('标题和内容都要填'); return; }
+    const btn = $('#noticeNewSend');
+    btn.disabled = true;
+    try {
+      await API.noticeAdd(title, body, pinned);
+      $('#noticeNewTitle').value = '';
+      $('#noticeNewBody').value = '';
+      $('#noticeNewPin').checked = false;
+      $('#noticeCompose').hidden = true;
+      noticeData = null;
+      renderNotice(await loadNotice());
+      toast('公告已发布');
+    } catch (e) { toast(e.message, 3600); }
+    finally { btn.disabled = false; }
   });
 
   /* ---------------- 启动 ---------------- */

@@ -501,6 +501,12 @@
     async notice() {
       throw new Error('演示模式：公告走本地文件');
     },
+    async noticeAdd() {
+      throw new Error('演示模式不能发布公告');
+    },
+    async noticeDelete() {
+      throw new Error('演示模式不能删除公告');
+    },
 
     /* ---------- 评论（图片 / 视频）/ 留言板 ---------- */
     async comments(path) {
@@ -700,6 +706,14 @@
       return req('/api/avatar/clear', { method: 'POST' });
     },
     async notice() { return req('/api/notice'); },
+    async noticeAdd(title, body, pinned) {
+      return req('/api/admin/notice', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add: { title: title, body: body, pinned: !!pinned } }) });
+    },
+    async noticeDelete(id) {
+      return req('/api/admin/notice', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete: id }) });
+    },
     async comments(path) { return req('/api/comments?path=' + encodeURIComponent(path)); },
     async commentAdd(path, text) {
       return req('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -747,6 +761,8 @@
     setAvatar: (blob) => (API.MOCK ? mock : real).setAvatar(blob),
     clearAvatar: () => (API.MOCK ? mock : real).clearAvatar(),
     notice: () => (API.MOCK ? mock : real).notice(),
+    noticeAdd: (t, b, p) => (API.MOCK ? mock : real).noticeAdd(t, b, p),
+    noticeDelete: (id) => (API.MOCK ? mock : real).noticeDelete(id),
     comments: (p) => (API.MOCK ? mock : real).comments(p),
     commentAdd: (p, t) => (API.MOCK ? mock : real).commentAdd(p, t),
     commentDel: (id) => (API.MOCK ? mock : real).commentDel(id),
