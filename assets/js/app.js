@@ -121,7 +121,12 @@
       ok.className = 'btn ' + (o.danger ? 'btn-danger' : 'btn-primary');
       $('#dlgCancel').textContent = o.cancelText || '取消';
       $('#dlgModal').hidden = false;
-      if (dlgHasInput) setTimeout(() => { const i = $('#dlgInput'); i.focus(); i.select(); }, 30);
+      if (dlgHasInput) setTimeout(() => {
+        const i = $('#dlgInput');
+        i.focus();
+        if (typeof o.selectEnd === 'number') i.setSelectionRange(0, o.selectEnd);
+        else i.select();
+      }, 30);
     });
   }
   const uiConfirm = (o) => openDialog(Object.assign({ input: false, okText: '确定' }, o)).then((v) => v === true);
@@ -1667,12 +1672,25 @@
     if (!errs) toast('删除完成');
   }
 
-  /* 重命名（入口只在「自己传的 / 管理员」的菜单里出现） */
+  /* 重命名（入口只在「自己传的 / 管理员」的菜单里出现）
+     文件：输入框只显示主名，后缀固定不变（提交时自动补回原后缀）；文件夹照旧改整名 */
   async function renameItem(it) {
-    const nn = await uiPrompt({ title: '重命名', label: '新名字', value: it.name, maxlength: 120, okText: '保存' });
+    let base = it.name, ext = '';
+    if (!it.isDir) {
+      const dot = it.name.lastIndexOf('.');
+      if (dot > 0 && dot < it.name.length - 1) { base = it.name.slice(0, dot); ext = it.name.slice(dot); }
+    }
+    const nn = await uiPrompt({
+      title: '重命名',
+      label: ext ? ('新名字（后缀 ' + ext + ' 固定不变）') : '新名字',
+      value: base,
+      maxlength: 120 - ext.length,
+      okText: '保存'
+    });
     if (nn == null) return;
-    const name = nn.trim();
+    let name = nn.trim();
     if (!name) { toast('名字不能为空'); return; }
+    if (!it.isDir && ext && name.slice(-ext.length).toLowerCase() !== ext.toLowerCase()) name += ext;
     if (name === it.name) return;
     if (/[\/\\\x00-\x1f]/.test(name)) { toast('名字不能带斜杠或换行'); return; }
     try {
