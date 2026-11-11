@@ -1309,13 +1309,37 @@
   const queue = [];       // {id,file,path,uploadId,chunks,done,status,sent,speed,retry}
   const ETA_WINDOW = [];
 
-  $('#uploadBtn').addEventListener('click', () => $('#filePicker').click());
-  // 安卓/iOS 的相册 Picker 对 multiple 支持不稳定（选完返回空 → 不上传），
-  // 移动端干脆去掉 multiple，一次选一个；桌面端保留多选
-  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
-    const fp = $('#filePicker');
-    if (fp) fp.removeAttribute('multiple');
+  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+  /* 移动端先选来源：文件管理器（全类型多选）/ 相册（Photo Picker，图片视频多选）。
+     accept 存在时 Android 13+ 才会调起系统 Photo Picker，它对 multiple 支持是好的；
+     不带 accept 的 input 会落到老式相册，multiple 会失效（选完返回空）。 */
+  function pickSource() {
+    return new Promise((resolve) => {
+      const mask = document.createElement('div');
+      mask.className = 'sheet-mask';
+      mask.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
+        <div class="sheet-title">上传内容</div>
+        <button type="button" data-k="file">选择文件（可多选）</button>
+        <button type="button" data-k="photo">从相册选照片 / 视频（可多选）</button>
+        <button type="button" data-k="cancel" class="sheet-cancel">取消</button>
+      </div>`;
+      const done = (v) => { if (mask.parentNode) document.body.removeChild(mask); resolve(v); };
+      mask.addEventListener('click', (ev) => {
+        if (ev.target === mask) return done(null);
+        const b = ev.target.closest ? ev.target.closest('button[data-k]') : null;
+        if (!b) return;
+        done(b.dataset.k === 'cancel' ? null : b.dataset.k);
+      });
+      document.body.appendChild(mask);
+    });
   }
+  $('#uploadBtn').addEventListener('click', async () => {
+    if (!IS_MOBILE) { $('#filePicker').click(); return; }
+    const k = await pickSource();
+    if (k === 'file') $('#filePicker').click();
+    else if (k === 'photo') $('#filePickerPhoto').click();
+  });
   $('#mkdirBtn').addEventListener('click', async () => {
     const nn = await uiPrompt({ title: '新建文件夹', label: '文件夹名字', placeholder: '例如：2026 运动会', maxlength: 60, okText: '创建' });
     if (nn == null) return;
@@ -1334,7 +1358,7 @@
      立刻把 FileList 拷成数组再清空 input，防止个别内核清空后取不到文件。 */
   document.addEventListener('change', (e) => {
     const input = e.target;
-    if (!input || (input.id !== 'filePicker' && input.id !== 'filePickerOne')) return;
+    if (!input || ['filePicker', 'filePickerPhoto', 'filePickerOne'].indexOf(input.id) < 0) return;
     const read = () => (input.files ? Array.prototype.slice.call(input.files) : []);
     const finish = (arr) => {
       try { input.value = ''; } catch (err) {}
@@ -1346,18 +1370,17 @@
     };
     const picked = read();
     if (picked.length) { finish(picked); return; }
-    // 部分安卓 ROM（小米/华为/OPPO 相册）对 multiple 支持不好，返回空 files：
-    // 延迟读一次，仍为空就自动降级到「单张选择」再试
+    // 少数 ROM 选完才异步填充 files：稍后再读一次
     setTimeout(() => {
       const again = read();
       if (window.__cdDebug) window.__cdDebug(input.id + ' 延迟重读: ' + again.length);
       if (again.length) { finish(again); return; }
       try { input.value = ''; } catch (err) {}
-      if (input.id === 'filePicker' && input.hasAttribute('multiple')) {
-        toast('相册不支持多选，已切换为「单张选择」，请再选一次', 4500);
+      if (input.id === 'filePickerPhoto' && input.hasAttribute('multiple')) {
+        toast('这台手机的相册多选不给文件，先试单张选择', 4200);
         setTimeout(() => { const one = $('#filePickerOne'); if (one) one.click(); }, 250);
       } else {
-        toast('没有读取到文件：请改用「文件」入口选择，或先把照片另存到「下载」再上传', 6000);
+        toast('没有读取到文件：换个入口试试，或先把文件另存到「下载」再上传', 6000);
       }
     }, 450);
   }, true);
