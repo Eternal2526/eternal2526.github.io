@@ -1309,51 +1309,7 @@
   const queue = [];       // {id,file,path,uploadId,chunks,done,status,sent,speed,retry}
   const ETA_WINDOW = [];
 
-  const UA = navigator.userAgent;
-  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(UA);
-  // 安卓 WebView（App 内嵌 / 系统 WebView 浏览器）：相册分支依赖宿主 onShowFileChooser，
-  // 很多实现返回空 files（Android 10 又没有 Photo Picker 可用）→ 只能走文件管理器
-  const IS_WEBVIEW = /\bwv\b|; wv\)/i.test(UA) ||
-    (/Android/i.test(UA) && /Version\/\d/i.test(UA) && !/Chrome\/\d+/i.test(UA));
-
-  /* 移动端先选来源：文件管理器（全类型多选）/ 相册（Photo Picker，图片视频多选）。
-     accept 存在时 Android 13+ 才会调起系统 Photo Picker，它对 multiple 支持是好的；
-     不带 accept 的 input 会落到老式相册，multiple 会失效（选完返回空）。 */
-  function pickSource() {
-    return new Promise((resolve) => {
-      const mask = document.createElement('div');
-      mask.className = 'sheet-mask';
-      mask.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
-        <div class="sheet-title">上传内容</div>
-        <button type="button" data-k="file">选择文件（可多选）</button>
-        <button type="button" data-k="photo">从相册选照片 / 视频（可多选）</button>
-        <button type="button" data-k="cancel" class="sheet-cancel">取消</button>
-      </div>`;
-      const done = (v) => { if (mask.parentNode) document.body.removeChild(mask); resolve(v); };
-      mask.addEventListener('click', (ev) => {
-        if (ev.target === mask) return done(null);
-        const b = ev.target.closest ? ev.target.closest('button[data-k]') : null;
-        if (!b) return;
-        done(b.dataset.k === 'cancel' ? null : b.dataset.k);
-      });
-      document.body.appendChild(mask);
-    });
-  }
-  $('#uploadBtn').addEventListener('click', async () => {
-    if (!IS_MOBILE) { $('#filePicker').click(); return; }
-    if (IS_WEBVIEW) {
-      // WebView：相册入口拿不到文件，直接走文件管理器（在 DCIM / Pictures 里选照片即可）
-      if (!window.__cdWvTip) {
-        toast('当前是 WebView 环境：请在文件选择器里进 DCIM / Pictures 选照片（相册入口在这里拿不到文件）', 6500);
-        window.__cdWvTip = 1;
-      }
-      $('#filePicker').click();
-      return;
-    }
-    const k = await pickSource();
-    if (k === 'file') $('#filePicker').click();
-    else if (k === 'photo') $('#filePickerPhoto').click();
-  });
+  $('#uploadBtn').addEventListener('click', () => $('#filePicker').click());
   $('#mkdirBtn').addEventListener('click', async () => {
     const nn = await uiPrompt({ title: '新建文件夹', label: '文件夹名字', placeholder: '例如：2026 运动会', maxlength: 60, okText: '创建' });
     if (nn == null) return;
@@ -1371,32 +1327,14 @@
      避免 input 被替换或绑定丢失时收不到 change —— GeckoView 下常见“选完没反应”；
      立刻把 FileList 拷成数组再清空 input，防止个别内核清空后取不到文件。 */
   document.addEventListener('change', (e) => {
-    const input = e.target;
-    if (!input || ['filePicker', 'filePickerPhoto', 'filePickerOne'].indexOf(input.id) < 0) return;
-    const read = () => (input.files ? Array.prototype.slice.call(input.files) : []);
-    const finish = (arr) => {
-      try { input.value = ''; } catch (err) {}
-      if (window.__cdDebug) {
-        window.__cdDebug(input.id + ': ' + arr.length + ' 个文件');
-        arr.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
-      }
-      addFiles(arr);
-    };
-    const picked = read();
-    if (picked.length) { finish(picked); return; }
-    // 少数 ROM 选完才异步填充 files：稍后再读一次
-    setTimeout(() => {
-      const again = read();
-      if (window.__cdDebug) window.__cdDebug(input.id + ' 延迟重读: ' + again.length);
-      if (again.length) { finish(again); return; }
-      try { input.value = ''; } catch (err) {}
-      if (input.id === 'filePickerPhoto' && input.hasAttribute('multiple')) {
-        toast('这台手机的相册多选不给文件，先试单张选择', 4200);
-        setTimeout(() => { const one = $('#filePickerOne'); if (one) one.click(); }, 250);
-      } else {
-        toast('没有读取到文件：换个入口试试，或先把文件另存到「下载」再上传', 6000);
-      }
-    }, 450);
+    if (!e.target || e.target.id !== 'filePicker') return;
+    const picked = e.target.files ? Array.prototype.slice.call(e.target.files) : [];
+    try { e.target.value = ''; } catch (err) {}
+    if (window.__cdDebug) {
+      window.__cdDebug('change: ' + picked.length + ' 个文件');
+      picked.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
+    }
+    addFiles(picked);
   }, true);
   $('#upMin').addEventListener('click', () => $('#uploader').hidden = true);
   $('#upRetry').addEventListener('click', () => queue.filter((q) => q.status === 'fail').forEach((q) => runTask(q)));
@@ -1436,14 +1374,8 @@
     }
     if (!filesArr.length) return;
     const path = state.folder;
-    const TYPE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif', 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'audio/mpeg': '.mp3' };
     for (const f of filesArr) {
-      // 手机相册返回的文件常常没有文件名（或没有扩展名）：按 MIME 补一个，否则后端认不出类型
-      let fname = String(f.name || '');
-      if (!/\.[a-z0-9]{1,8}$/i.test(fname)) {
-        fname = (fname || ('file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6))) +
-                (TYPE_EXT[String(f.type || '').toLowerCase()] || '');
-      }
+      const fname = f.name || ('file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
       const task = {
         id: 't' + Math.random().toString(36).slice(2, 8),
         file: f, name: fname, path: path === '/' ? '/' + fname : path + '/' + fname,
@@ -2540,6 +2472,26 @@
   }
   function noticeIsAdmin() { return !!(state.user && state.user.role === 'admin'); }
 
+  function noticeAddMore(card, txt) {
+    if (!card || !txt || card.querySelector('.notice-more')) return;
+    if (txt.classList.contains('open')) return;
+    if (txt.scrollHeight <= txt.clientHeight + 2) return;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'notice-more';
+    more.textContent = '展开';
+    more.addEventListener('click', () => {
+      const open = txt.classList.toggle('open');
+      more.textContent = open ? '收起' : '展开';
+    });
+    card.appendChild(more);
+  }
+  function noticeRecheck() {
+    const body = $('#noticeBody');
+    if (!body || !body.offsetHeight) return;   // 弹窗还没显示，此时量不出高度
+    body.querySelectorAll('.notice-item-text').forEach((txt) => noticeAddMore(txt.parentElement, txt));
+  }
+
   function renderNotice(o) {
     const body = $('#noticeBody');
     body.textContent = '';
@@ -2577,22 +2529,8 @@
       card.appendChild(head);
       card.appendChild(txt);
 
-      // 内容超过 3 行才给「展开」
-      const checkClamp = () => {
-        if (txt.classList.contains('open')) return;
-        if (txt.scrollHeight > txt.clientHeight + 2 && !card.querySelector('.notice-more')) {
-          const more = document.createElement('button');
-          more.type = 'button';
-          more.className = 'notice-more';
-          more.textContent = '展开';
-          more.addEventListener('click', () => {
-            const open = txt.classList.toggle('open');
-            more.textContent = open ? '收起' : '展开';
-          });
-          card.appendChild(more);
-        }
-      };
-      requestAnimationFrame(checkClamp);
+      // 超过 3 行才给「展开」；弹窗隐藏时量不出来，openNotice 后会再查一次
+      requestAnimationFrame(() => noticeAddMore(card, txt));
 
       if (noticeIsAdmin()) {
         const del = document.createElement('button');
@@ -2613,7 +2551,12 @@
       body.appendChild(card);
     });
   }
-  function openNotice() { $('#noticeModal').hidden = false; $('#noticeCompose').hidden = true; }
+  function openNotice() {
+    $('#noticeModal').hidden = false;
+    $('#noticeCompose').hidden = true;
+    setTimeout(noticeRecheck, 80);    // 显示后量一次（字体可能还没就绪）
+    setTimeout(noticeRecheck, 380);   // 再补一次
+  }
   function closeNotice() { $('#noticeModal').hidden = true; }
   function syncNoticeAdminUI() { $('#noticeComposeBtn').hidden = !noticeIsAdmin(); }
   async function maybeShowNotice() {

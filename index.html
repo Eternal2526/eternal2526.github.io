@@ -748,13 +748,6 @@ button,input,select,textarea{font:inherit;color:inherit}
 .notice-compose textarea{min-height:110px;resize:vertical;line-height:1.6}
 .notice-compose-foot{display:flex;gap:8px;justify-content:flex-end}
 .notice-pin{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--md-sys-color-on-surface-variant)}
-/* 上传来源选择（底部弹层） */
-.sheet-mask{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:10px}
-.sheet{width:100%;max-width:440px;background:var(--md-sys-color-surface-container-high,#26332c);border-radius:24px;padding:10px;display:flex;flex-direction:column;gap:4px;box-shadow:0 16px 48px rgba(0,0,0,.36)}
-.sheet .sheet-title{font-size:12px;padding:8px 0 4px;text-align:center;color:var(--md-sys-color-on-surface-variant)}
-.sheet button{border:0;background:transparent;color:var(--md-sys-color-on-surface);font:inherit;font-size:15px;line-height:1.4;padding:15px 12px;border-radius:16px;cursor:pointer}
-.sheet button:active{background:var(--md-sys-color-surface-container-highest,rgba(255,255,255,.08))}
-.sheet .sheet-cancel{color:var(--md-sys-color-primary);font-weight:500}
 
 @media (max-width:560px){
   .search-fields .sf{padding:0 6px;font-size:11px}
@@ -1102,10 +1095,6 @@ button,input,select,textarea{font:inherit;color:inherit}
 </div>
 
 <input id="filePicker" type="file" multiple hidden>
-<!-- 相册入口：带 accept 才会走 Android 13+ 的 Photo Picker（支持多选），避开老相册 multiple 失效的问题 -->
-<input id="filePickerPhoto" type="file" accept="image/*,video/*" multiple hidden>
-<!-- 极端兜底：个别老 ROM 连 Photo Picker 多选也不行时，降级单张 -->
-<input id="filePickerOne" type="file" accept="image/*,video/*" hidden>
 
 <!-- ============ 详细信息 ============ -->
 <div id="infoModal" class="modal" hidden>
@@ -1349,8 +1338,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="assets/js/api.js?v=20261111e"></script>
-<script src="assets/js/app.js?v=20261111e"></script>
+<script src="assets/js/api.js?v=20261111f"></script>
+<script src="assets/js/app.js?v=20261111f"></script>
 <script>
 /* 主题色（accent）切换：点色点 → 写 localStorage 并立即应用到 <html> */
 (function(){
