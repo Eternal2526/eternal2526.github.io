@@ -899,8 +899,9 @@
   }
 
   function cardHTML(it) {
-    const t = API.thumbUrl(it, 400);
-    const isImg = it.kind === 'image' || it.kind === 'video';
+    const isHeic = /\.(heic|heif)$/i.test(it.name);
+    const t = isHeic ? null : API.thumbUrl(it, 400);
+    const isImg = !isHeic && (it.kind === 'image' || it.kind === 'video');
     const thumb = (isImg && t)
       ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async">`
       : `<div class="ph">${ICON[it.kind] || ICON.other}<b>${it.isDir ? '' : API.extOf(it.name)}</b></div>`;
@@ -937,8 +938,9 @@
   }
 
   function rowHTML(it) {
-    const t = API.thumbUrl(it, 120);
-    const isImg = it.kind === 'image' || it.kind === 'video';
+    const isHeic = /\.(heic|heif)$/i.test(it.name);
+    const t = isHeic ? null : API.thumbUrl(it, 120);
+    const isImg = !isHeic && (it.kind === 'image' || it.kind === 'video');
     const ico = (isImg && t) ? `<img src="${esc(t)}" alt="">` : (it.isDir ? ICON.folder : (ICON[it.kind] || ICON.other));
     const mine = isMine(it);
     const canDel = state.user.role === 'admin' || mine;
@@ -1880,7 +1882,16 @@
 
     if (it.kind === 'image' || it.kind === 'video' || it.kind === 'audio') {
       let src = it.localUrl || url;
-      if (it.kind === 'image' && /\.(heic|heif)$/i.test(it.name)) src = API.thumbUrl(it, 1600);  // HEIC 走后端转码预览
+      if (it.kind === 'image' && /\.(heic|heif)$/i.test(it.name)) {
+        // HEIC/HEIF：浏览器无法解码，后端也不再转码 → 直接给下载入口
+        body.innerHTML = `<div style="color:#fff;text-align:center;max-width:460px;line-height:1.75;padding:24px">
+          <div style="font-size:16px;font-weight:500;margin-bottom:10px">HEIC 照片暂不支持在线预览</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.72)">这是 iPhone / iPad 拍摄的 HEIC 格式，浏览器没法直接解码。<br>请下载后用系统相册或看图软件打开。</div>
+          <a class="btn btn-primary" style="margin-top:18px;display:inline-flex" href="${esc(API.rawUrl(it, true))}" download>下载查看</a>
+        </div>`;
+        v.hidden = false;
+        return;
+      }
       if (API.MOCK && src === '#') src = it.kind === 'image' ? (it.thumb || null) : null;  // 演示模式用占位图
       if (!src) { toast('演示模式：真实文件接入后端后这里能直接预览'); return; }
       body.innerHTML = it.kind === 'image' ? `<img src="${esc(src)}" alt="">`
