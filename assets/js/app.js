@@ -1310,6 +1310,12 @@
   const ETA_WINDOW = [];
 
   $('#uploadBtn').addEventListener('click', () => $('#filePicker').click());
+  // 安卓/iOS 的相册 Picker 对 multiple 支持不稳定（选完返回空 → 不上传），
+  // 移动端干脆去掉 multiple，一次选一个；桌面端保留多选
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+    const fp = $('#filePicker');
+    if (fp) fp.removeAttribute('multiple');
+  }
   $('#mkdirBtn').addEventListener('click', async () => {
     const nn = await uiPrompt({ title: '新建文件夹', label: '文件夹名字', placeholder: '例如：2026 运动会', maxlength: 60, okText: '创建' });
     if (nn == null) return;
@@ -1327,26 +1333,32 @@
      避免 input 被替换或绑定丢失时收不到 change —— GeckoView 下常见“选完没反应”；
      立刻把 FileList 拷成数组再清空 input，防止个别内核清空后取不到文件。 */
   document.addEventListener('change', (e) => {
-    if (!e.target || e.target.id !== 'filePicker') return;
     const input = e.target;
+    if (!input || (input.id !== 'filePicker' && input.id !== 'filePickerOne')) return;
     const read = () => (input.files ? Array.prototype.slice.call(input.files) : []);
     const finish = (arr) => {
       try { input.value = ''; } catch (err) {}
       if (window.__cdDebug) {
-        window.__cdDebug('change: ' + arr.length + ' 个文件');
+        window.__cdDebug(input.id + ': ' + arr.length + ' 个文件');
         arr.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
       }
       addFiles(arr);
     };
     const picked = read();
     if (picked.length) { finish(picked); return; }
-    // 有些安卓 ROM（小米/华为相册 Picker）返回后才异步填充 files：稍后再读一次
+    // 部分安卓 ROM（小米/华为/OPPO 相册）对 multiple 支持不好，返回空 files：
+    // 延迟读一次，仍为空就自动降级到「单张选择」再试
     setTimeout(() => {
       const again = read();
-      if (window.__cdDebug) window.__cdDebug('延迟重读: ' + again.length + ' 个文件');
+      if (window.__cdDebug) window.__cdDebug(input.id + ' 延迟重读: ' + again.length);
       if (again.length) { finish(again); return; }
       try { input.value = ''; } catch (err) {}
-      toast('相册没有把文件交给浏览器（常见于小米/华为相册）。请改用「文件」入口选择，或先把照片另存到「下载」再上传。', 6000);
+      if (input.id === 'filePicker' && input.hasAttribute('multiple')) {
+        toast('相册不支持多选，已切换为「单张选择」，请再选一次', 4500);
+        setTimeout(() => { const one = $('#filePickerOne'); if (one) one.click(); }, 250);
+      } else {
+        toast('没有读取到文件：请改用「文件」入口选择，或先把照片另存到「下载」再上传', 6000);
+      }
     }, 450);
   }, true);
   $('#upMin').addEventListener('click', () => $('#uploader').hidden = true);

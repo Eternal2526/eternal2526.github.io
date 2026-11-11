@@ -1095,6 +1095,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 </div>
 
 <input id="filePicker" type="file" multiple hidden>
+<!-- 相册专用：不带 multiple，规避部分安卓 ROM 相册 Picker 返回空文件的 bug -->
+<input id="filePickerOne" type="file" accept="image/*,video/*" hidden>
 
 <!-- ============ 详细信息 ============ -->
 <div id="infoModal" class="modal" hidden>
@@ -1338,8 +1340,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="assets/js/api.js?v=20261111b"></script>
-<script src="assets/js/app.js?v=20261111b"></script>
+<script src="assets/js/api.js?v=20261111c"></script>
+<script src="assets/js/app.js?v=20261111c"></script>
 <script>
 /* 主题色（accent）切换：点色点 → 写 localStorage 并立即应用到 <html> */
 (function(){
