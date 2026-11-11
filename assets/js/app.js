@@ -1472,7 +1472,7 @@
     if (!API.MOCK && (it.kind === 'image' || it.kind === 'video')) {
       try {
         const blob = it.kind === 'image' ? await makeImageThumb(task.file) : await makeVideoThumb(task.file);
-        if (blob) {
+        if (blob && blob.size > 1500) {   // 太小的空白图不传（H.265 截不了帧时会产出几百字节的空图）
           await API.putThumb(it.path, blob);
           it.localThumb = URL.createObjectURL(blob);
           render();
