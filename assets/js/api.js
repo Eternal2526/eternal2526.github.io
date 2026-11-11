@@ -796,6 +796,11 @@
     if (API.MOCK) return '#';
     return API.base + '/api/raw?path=' + encodeURIComponent(item.path) + (download ? '&dl=1' : '') + '&' + API.auth();
   };
+  /* H.265 实时转码流：只有电脑后端（/api/health 的 transcode=true）才可用 */
+  API.canTranscode = false;
+  API.h264Url = function (item, ss) {
+    return API.base + '/api/h264?path=' + encodeURIComponent(item.path) + (ss ? '&ss=' + ss : '') + '&' + API.auth();
+  };
   /* 头像地址：按用户 id 取（mock 用内存里的 dataURL） */
   API.avatarVer = (function () { try { return Number(localStorage.getItem('cd.avVer')) || 0; } catch (e) { return 0; } })();
   API.avatarUrl = function (id) {

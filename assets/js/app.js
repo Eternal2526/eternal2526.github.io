@@ -219,6 +219,7 @@
     $('#userName').textContent = state.user.name;
     $('#userRole').textContent = state.user.role === 'admin' ? '管理员' : '同学';
     syncAvatarUI();
+    API.diskInfo().then((r) => { API.canTranscode = !!(r && r.transcode); }).catch(() => {});
     load(state.folder);
     loadTree();
     loadRequests();
@@ -1902,6 +1903,26 @@
         const vid = body.querySelector('video');
         if (vid) vid.addEventListener('error', () => {
           const dlUrl = API.rawUrl(it, true);
+          // 后端在电脑上（有 ffmpeg）→ 让它实时把 H.265 转成 H.264 播
+          if (API.canTranscode) {
+            const v2 = document.createElement('video');
+            v2.src = API.h264Url(it);
+            v2.controls = true; v2.autoplay = true; v2.playsInline = true;
+            v2.style.maxWidth = '100%'; v2.style.maxHeight = '80vh';
+            v2.addEventListener('error', () => {
+              body.innerHTML = `<div style="color:#fff;text-align:center;max-width:440px;line-height:1.75;padding:24px">
+                <div style="font-size:16px;font-weight:500;margin-bottom:10px">这段视频转码失败</div>
+                <div style="font-size:13px;color:rgba(255,255,255,.72)">请下载后本地播放。</div>
+                <a class="btn btn-primary" style="margin-top:18px;display:inline-flex" href="${esc(dlUrl)}" download>下载播放</a>
+              </div>`;
+            });
+            body.innerHTML = `<div style="color:#fff;text-align:center;max-width:420px;line-height:1.8;padding:18px 18px 10px">
+              <div style="font-size:15px">正在转码播放（H.265 → H.264）…</div>
+              <div style="font-size:12.5px;color:rgba(255,255,255,.7);margin-top:8px">电脑后端实时转码，起播需要几秒</div>
+            </div>`;
+            body.appendChild(v2);
+            return;
+          }
           body.innerHTML = `<div style="color:#fff;text-align:center;max-width:440px;line-height:1.75;padding:24px">
             <div style="font-size:16px;font-weight:500;margin-bottom:10px">此视频为 H.265 编码</div>
             <div style="font-size:13px;color:rgba(255,255,255,.72)">受限于硬件性能，请下载后本地播放。</div>
