@@ -1197,13 +1197,18 @@
     const add = has < media.length;          // 不是全都有 → 全部加上；全都有 → 全部去掉
     b.disabled = true;
     try {
-      await Promise.all(media.map(async (it) => {
-        const res = await API.tagSet(it.path, add ? [id] : [], add ? [] : [id]);
-        it.tags = res.tags || [];
-        syncItemTags(it);
-      }));
+      // 一次批量请求；后端按文件返回最终标签，避免并发 N 个请求出现"服务器成功、界面漏更新"
+      const res = await API.tagSetBatch(media.map((i) => i.path), add ? [id] : [], add ? [] : [id]);
+      const map = (res && res.tags) || {};
+      media.forEach((it) => {
+        if (Object.prototype.hasOwnProperty.call(map, it.path)) {
+          it.tags = map[it.path] || [];
+          syncItemTags(it);
+        }
+      });
       await refreshTags();
       renderBatchTags();
+      if (res && res.skipped && res.skipped.length) toast(`已跳过 ${res.skipped.length} 个不能打标签的文件`, 3000);
     } catch (err) { toast(err.message, 3600); }
     finally { b.disabled = false; }
   });

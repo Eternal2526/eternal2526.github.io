@@ -359,6 +359,20 @@
       fileTags[path] = [...cur];
       return { ok: true, path, tags: tagsOfPath(path) };
     },
+    async tagSetBatch(paths, add, rm) {
+      await sleep(120);
+      const out = {}, skipped = [];
+      for (const p of (paths || [])) {
+        const f = files.find((x) => x.path === p);
+        if (!f || !isTagKind(f.kind)) { skipped.push(p); continue; }
+        const cur = new Set((fileTags[p] || []).filter((id) => tagById(id)));
+        (add || []).forEach((id) => { if (tagById(id)) cur.add(Number(id)); });
+        (rm || []).forEach((id) => cur.delete(Number(id)));
+        fileTags[p] = [...cur];
+        out[p] = tagsOfPath(p);
+      }
+      return { ok: true, tags: out, skipped };
+    },
     async tagCreate(name, color, group) {
       await sleep(120);
       name = (name || '').trim();
@@ -649,9 +663,13 @@
         body: JSON.stringify({ path, name }) });
     },
     async tags() { return req('/api/tags'); },
-    async tagSet(path, add, remove) {
+    async tagSet(path, add, rm) {
       return req('/api/tag', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, add: add || [], remove: remove || [] }) });
+        body: JSON.stringify({ path, add: add || [], remove: rm || [] }) });
+    },
+    async tagSetBatch(paths, add, rm) {
+      return req('/api/tag/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: paths || [], add: add || [], remove: rm || [] }) });
     },
     async tagCreate(name, color, group) {
       return req('/api/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -747,6 +765,7 @@
     rename: (p, n) => (API.MOCK ? mock : real).rename(p, n),
     tags: () => (API.MOCK ? mock : real).tags(),
     tagSet: (p, add, rm) => (API.MOCK ? mock : real).tagSet(p, add, rm),
+    tagSetBatch: (ps, add, rm) => (API.MOCK ? mock : real).tagSetBatch(ps, add, rm),
     tagCreate: (n, c, g) => (API.MOCK ? mock : real).tagCreate(n, c, g),
     tagUpdate: (id, n, c, g) => (API.MOCK ? mock : real).tagUpdate(id, n, c, g),
     tagDelete: (id) => (API.MOCK ? mock : real).tagDelete(id),
