@@ -1309,7 +1309,12 @@
   const queue = [];       // {id,file,path,uploadId,chunks,done,status,sent,speed,retry}
   const ETA_WINDOW = [];
 
-  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const UA = navigator.userAgent;
+  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(UA);
+  // 安卓 WebView（App 内嵌 / 系统 WebView 浏览器）：相册分支依赖宿主 onShowFileChooser，
+  // 很多实现返回空 files（Android 10 又没有 Photo Picker 可用）→ 只能走文件管理器
+  const IS_WEBVIEW = /\bwv\b|; wv\)/i.test(UA) ||
+    (/Android/i.test(UA) && /Version\/\d/i.test(UA) && !/Chrome\/\d+/i.test(UA));
 
   /* 移动端先选来源：文件管理器（全类型多选）/ 相册（Photo Picker，图片视频多选）。
      accept 存在时 Android 13+ 才会调起系统 Photo Picker，它对 multiple 支持是好的；
@@ -1336,6 +1341,15 @@
   }
   $('#uploadBtn').addEventListener('click', async () => {
     if (!IS_MOBILE) { $('#filePicker').click(); return; }
+    if (IS_WEBVIEW) {
+      // WebView：相册入口拿不到文件，直接走文件管理器（在 DCIM / Pictures 里选照片即可）
+      if (!window.__cdWvTip) {
+        toast('当前是 WebView 环境：请在文件选择器里进 DCIM / Pictures 选照片（相册入口在这里拿不到文件）', 6500);
+        window.__cdWvTip = 1;
+      }
+      $('#filePicker').click();
+      return;
+    }
     const k = await pickSource();
     if (k === 'file') $('#filePicker').click();
     else if (k === 'photo') $('#filePickerPhoto').click();
