@@ -1328,13 +1328,26 @@
      立刻把 FileList 拷成数组再清空 input，防止个别内核清空后取不到文件。 */
   document.addEventListener('change', (e) => {
     if (!e.target || e.target.id !== 'filePicker') return;
-    const picked = e.target.files ? Array.prototype.slice.call(e.target.files) : [];
-    try { e.target.value = ''; } catch (err) {}
-    if (window.__cdDebug) {
-      window.__cdDebug('change: ' + picked.length + ' 个文件');
-      picked.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
-    }
-    addFiles(picked);
+    const input = e.target;
+    const read = () => (input.files ? Array.prototype.slice.call(input.files) : []);
+    const finish = (arr) => {
+      try { input.value = ''; } catch (err) {}
+      if (window.__cdDebug) {
+        window.__cdDebug('change: ' + arr.length + ' 个文件');
+        arr.forEach((f, i) => window.__cdDebug('  ' + i + ': ' + (f.name || '(无名字)') + ' | ' + (f.type || '(空type)') + ' | ' + f.size + 'B'));
+      }
+      addFiles(arr);
+    };
+    const picked = read();
+    if (picked.length) { finish(picked); return; }
+    // 有些安卓 ROM（小米/华为相册 Picker）返回后才异步填充 files：稍后再读一次
+    setTimeout(() => {
+      const again = read();
+      if (window.__cdDebug) window.__cdDebug('延迟重读: ' + again.length + ' 个文件');
+      if (again.length) { finish(again); return; }
+      try { input.value = ''; } catch (err) {}
+      toast('相册没有把文件交给浏览器（常见于小米/华为相册）。请改用「文件」入口选择，或先把照片另存到「下载」再上传。', 6000);
+    }, 450);
   }, true);
   $('#upMin').addEventListener('click', () => $('#uploader').hidden = true);
   $('#upRetry').addEventListener('click', () => queue.filter((q) => q.status === 'fail').forEach((q) => runTask(q)));
@@ -1374,8 +1387,14 @@
     }
     if (!filesArr.length) return;
     const path = state.folder;
+    const TYPE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif', 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'audio/mpeg': '.mp3' };
     for (const f of filesArr) {
-      const fname = f.name || ('file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+      // 手机相册返回的文件常常没有文件名（或没有扩展名）：按 MIME 补一个，否则后端认不出类型
+      let fname = String(f.name || '');
+      if (!/\.[a-z0-9]{1,8}$/i.test(fname)) {
+        fname = (fname || ('file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6))) +
+                (TYPE_EXT[String(f.type || '').toLowerCase()] || '');
+      }
       const task = {
         id: 't' + Math.random().toString(36).slice(2, 8),
         file: f, name: fname, path: path === '/' ? '/' + fname : path + '/' + fname,
