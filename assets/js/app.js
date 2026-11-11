@@ -1867,7 +1867,8 @@
     }
     $('#viewerName').textContent = it.name;
     $('#viewerPos').textContent = viewerList.length > 1 ? (viewerIdx + 1) + ' / ' + viewerList.length : '';
-    $('#viewerPrev').hidden = $('#viewerNext').hidden = viewerList.length < 2;
+    $('#vzPrev').hidden = $('#vzNext').hidden = viewerList.length < 2;
+    vz.el = null;
     $('#viewerTags').innerHTML = chipHTML(it.tags);
     const vt = $('#viewerTag');
     vt.hidden = !API.canTag(it);
@@ -1903,6 +1904,11 @@
       body.innerHTML = it.kind === 'image' ? `<img src="${esc(src)}" alt="">`
         : it.kind === 'video' ? `<video src="${esc(src)}" controls autoplay playsinline></video>`
         : `<audio src="${esc(src)}" controls autoplay></audio>`;
+      // 图片：接入缩放 / 拖动（切图或换文件时复位）
+      if (it.kind === 'image') {
+        vz.el = body.querySelector('img');
+        vzReset();
+      }
       // 视频解码失败兜底：多半是 H.265(HEVC)，Chrome/Firefox 不支持，给下载入口而不是黑屏
       if (it.kind === 'video') {
         const vid = body.querySelector('video');
@@ -1955,27 +1961,71 @@
     vcmItem = null; vcmMsgs = [];
   }
   $('#viewerClose').addEventListener('click', closeViewer);
-  $('#viewerPrev').addEventListener('click', () => viewerStep(-1));
-  $('#viewerNext').addEventListener('click', () => viewerStep(1));
+  $('#vzPrev').addEventListener('click', () => viewerStep(-1));
+  $('#vzNext').addEventListener('click', () => viewerStep(1));
 
-  /* 手机：在预览里左右滑动 = 上一张 / 下一张（像相册那样） */
-  (function viewerSwipe() {
-    const v = $('#viewer');
-    let sx = 0, sy = 0, on = false;
-    v.addEventListener('touchstart', (e) => {
-      if (v.hidden || e.touches.length !== 1) return;
-      if (e.target.closest('video, audio')) return;      // 播放器上的手势不抢
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY; on = true;
+  /* ---------- 查看器：缩放 + 拖动 ----------
+     左右滑动默认是平移画面（放大后），切图用两侧边缘按钮 / ← → 键 */
+  const vz = { s: 1, x: 0, y: 0, el: null, drag: null };
+  function vzApply() {
+    if (!vz.el) return;
+    vz.el.style.transform = 'translate(' + vz.x + 'px,' + vz.y + 'px) scale(' + vz.s + ')';
+    vz.el.style.cursor = vz.s > 1 ? 'grab' : 'default';
+  }
+  function vzReset() { vz.s = 1; vz.x = 0; vz.y = 0; vzApply(); }
+  function vzScale(k) {
+    const ns = Math.min(10, Math.max(1, Math.round(vz.s * k * 1000) / 1000));
+    if (ns === vz.s) return;
+    vz.s = ns;
+    if (ns === 1) { vz.x = 0; vz.y = 0; }
+    vzApply();
+  }
+  (function bindViewerZoom() {
+    const body = $('#viewerBody');
+    let pinch = null;
+    body.addEventListener('wheel', (e) => {
+      if (!vz.el || $('#viewer').hidden) return;
+      e.preventDefault();
+      vzScale(e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+    body.addEventListener('pointerdown', (e) => {
+      if (!vz.el || vz.s <= 1) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      vz.drag = { sx: e.clientX - vz.x, sy: e.clientY - vz.y, id: e.pointerId };
+      vz.el.classList.add('vz-drag');
+      try { body.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    body.addEventListener('pointermove', (e) => {
+      if (!vz.drag || e.pointerId !== vz.drag.id) return;
+      vz.x = e.clientX - vz.drag.sx;
+      vz.y = e.clientY - vz.drag.sy;
+      vzApply();
+      e.preventDefault();
+    });
+    const endDrag = () => {
+      if (!vz.drag) return;
+      vz.drag = null;
+      if (vz.el) vz.el.classList.remove('vz-drag');
+    };
+    body.addEventListener('pointerup', endDrag);
+    body.addEventListener('pointercancel', endDrag);
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    body.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) pinch = { d: dist(e.touches), s: vz.s };
     }, { passive: true });
-    v.addEventListener('touchend', (e) => {
-      if (!on) return;
-      on = false;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - sx, dy = t.clientY - sy;
-      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-      viewerStep(dx < 0 ? 1 : -1);
-    }, { passive: true });
+    body.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && pinch) {
+        e.preventDefault();
+        vz.s = Math.min(10, Math.max(1, pinch.s * dist(e.touches) / pinch.d));
+        vzApply();
+      }
+    }, { passive: false });
+    body.addEventListener('touchend', () => { pinch = null; });
   })();
+  $('#vzIn').addEventListener('click', () => vzScale(1.3));
+  $('#vzOut').addEventListener('click', () => vzScale(1 / 1.3));
+  $('#vzReset').addEventListener('click', vzReset);
 
   /* ---------------- 预览里的评论（图片 / 视频）---------------- */
   let vcmItem = null, vcmMsgs = [], vcmCanEdit = false;

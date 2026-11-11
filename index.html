@@ -480,8 +480,26 @@ button,input,select,textarea{font:inherit;color:inherit}
 .viewer-head .btn-ghost:hover{background:rgba(255,255,255,.14)}
 .viewer-head .icon-btn{color:#fff}
 .viewer-head .icon-btn:hover{background:rgba(255,255,255,.14)}
-.viewer-body{flex:1;display:grid;place-items:center;padding:0 16px 24px;overflow:auto}
+.viewer-body{flex:1;display:flex;align-items:center;justify-content:center;padding:0 16px 24px;overflow:hidden;touch-action:none}
 .viewer-body img,.viewer-body video{max-width:min(1100px,96vw);max-height:82vh;border-radius:var(--md-sys-shape-corner-md);background:#000}
+.viewer-body img{transition:transform .12s ease-out;user-select:none;-webkit-user-drag:none;will-change:transform}
+.viewer-body img.vz-drag{transition:none}
+/* 左右切图按钮（贴边、垂直居中） */
+.vz-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:97;width:48px;height:48px;border:0;border-radius:50%;background:rgba(0,0,0,.42);color:#fff;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(6px);transition:background .15s}
+.vz-nav:hover{background:rgba(0,0,0,.66)}
+.vz-nav[hidden]{display:none}
+.vz-prev{left:14px}
+.vz-next{right:14px}
+/* 缩放工具 */
+.vz-tools{position:absolute;right:16px;bottom:18px;z-index:97;display:flex;gap:6px;padding:6px;border-radius:999px;background:rgba(0,0,0,.42);backdrop-filter:blur(6px)}
+.vz-tools button{width:38px;height:38px;border:0;border-radius:50%;background:transparent;color:#fff;font-size:17px;line-height:1;cursor:pointer;transition:background .15s}
+.vz-tools button:hover{background:rgba(255,255,255,.16)}
+@media (max-width:560px){
+  .vz-nav{width:42px;height:42px}
+  .vz-prev{left:6px}
+  .vz-next{right:6px}
+  .vz-tools{bottom:12px;right:10px}
+}
 .viewer-body audio{width:min(560px,92vw)}
 .viewer-head .v-pos{flex:none;margin-left:9px;font-size:12px;color:rgba(255,255,255,.62)}
 .v-cmt-n{font-size:11px;opacity:.85}
@@ -1029,12 +1047,6 @@ button,input,select,textarea{font:inherit;color:inherit}
       <span id="viewerTags" class="v-tags"></span>
     </span>
     <div>
-      <button class="icon-btn v-nav" id="viewerPrev" aria-label="上一个" title="上一个（← 或左滑）">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="icon-btn v-nav" id="viewerNext" aria-label="下一个" title="下一个（→ 或右滑）">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
       <button class="btn btn-ghost btn-sm" id="viewerTag" hidden>
         <svg viewBox="0 0 24 24" width="16" height="16"><path d="M11.6 4H20v8.4l-8.3 8.3a1.6 1.6 0 0 1-2.3 0l-6.1-6.1a1.6 1.6 0 0 1 0-2.3L11.6 4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16.2" cy="7.8" r="1.5" fill="currentColor"/></svg>
         标签
@@ -1050,6 +1062,20 @@ button,input,select,textarea{font:inherit;color:inherit}
     </div>
   </div>
   <div class="viewer-body" id="viewerBody"></div>
+
+  <!-- 左右切图（贴在两侧边，不再放顶部） -->
+  <button class="vz-nav vz-prev" id="vzPrev" aria-label="上一个" title="上一个（←）">
+    <svg viewBox="0 0 24 24" width="26" height="26"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="vz-nav vz-next" id="vzNext" aria-label="下一个" title="下一个（→）">
+    <svg viewBox="0 0 24 24" width="26" height="26"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <!-- 缩放工具 -->
+  <div class="vz-tools" id="vzTools">
+    <button type="button" id="vzOut" aria-label="缩小" title="缩小">−</button>
+    <button type="button" id="vzReset" aria-label="原始大小" title="原始大小">1:1</button>
+    <button type="button" id="vzIn" aria-label="放大" title="放大">＋</button>
+  </div>
 
   <aside class="v-comments" id="viewerComments" hidden aria-label="评论">
     <div class="vcm-head">
@@ -1338,8 +1364,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="assets/js/api.js?v=20261111h"></script>
-<script src="assets/js/app.js?v=20261111h"></script>
+<script src="assets/js/api.js?v=20261111i"></script>
+<script src="assets/js/app.js?v=20261111i"></script>
 <script>
 /* 主题色（accent）切换：点色点 → 写 localStorage 并立即应用到 <html> */
 (function(){
